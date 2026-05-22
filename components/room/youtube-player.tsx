@@ -53,42 +53,55 @@ export function YouTubePlayer({
 
     loadYT().then(() => {
       if (destroyed || !hostRef.current) return
+      // YT IFrame API methods throw "this.b is undefined" if called on a player
+      // that's mid-init or destroyed. Wrap every call so a stale reference can't
+      // crash React.
+      const safe = <T,>(fn: () => T): T | undefined => {
+        try {
+          return fn()
+        } catch (e) {
+          console.warn("[yt] api call failed", e)
+          return undefined
+        }
+      }
+      const getState = () => safe(() => ytRef.current?.getPlayerState?.())
+      const getCur = () => safe(() => ytRef.current?.getCurrentTime?.()) ?? 0
       const expose = () => {
         const player: Player = {
           async play() {
             const YT = window.YT
-            const st = ytRef.current?.getPlayerState?.()
-            if (st === YT?.PlayerState?.PLAYING) return
+            if (getState() === YT?.PlayerState?.PLAYING) return
             suppressEvents.current = true
-            ytRef.current?.playVideo?.()
-            // YT autoplay isn't blocked the same way, but if state doesn't transition
-            // (e.g. ad blocker, restricted embed), clear suppress so a real user click works.
+            safe(() => ytRef.current?.playVideo?.())
             window.setTimeout(() => {
-              const s = ytRef.current?.getPlayerState?.()
-              if (s !== YT?.PlayerState?.PLAYING) suppressEvents.current = false
+              if (getState() !== YT?.PlayerState?.PLAYING) {
+                suppressEvents.current = false
+              }
             }, 1500)
           },
           pause() {
             const YT = window.YT
-            const st = ytRef.current?.getPlayerState?.()
-            if (st === YT?.PlayerState?.PAUSED) return
+            if (getState() === YT?.PlayerState?.PAUSED) return
             suppressEvents.current = true
-            ytRef.current?.pauseVideo?.()
+            safe(() => ytRef.current?.pauseVideo?.())
           },
           seek(seconds) {
-            const cur = ytRef.current?.getCurrentTime?.() ?? 0
+            const cur = getCur()
             if (Math.abs(cur - seconds) < 0.1) return
             suppressEvents.current = true
-            ytRef.current?.seekTo?.(seconds, true)
+            safe(() => ytRef.current?.seekTo?.(seconds, true))
           },
           currentTime() {
-            return ytRef.current?.getCurrentTime?.() ?? 0
+            return getCur()
           },
           duration() {
-            return ytRef.current?.getDuration?.() ?? NaN
+            return safe(() => ytRef.current?.getDuration?.()) ?? NaN
+          },
+          isPaused() {
+            return getState() !== window.YT?.PlayerState?.PLAYING
           },
           destroy() {
-            ytRef.current?.destroy?.()
+            safe(() => ytRef.current?.destroy?.())
             ytRef.current = null
           },
         }
@@ -112,14 +125,14 @@ export function YouTubePlayer({
           },
           onStateChange: (e: any) => {
             const YT = window.YT
-            const t = ytRef.current?.getCurrentTime?.() ?? 0
-            if (e.data === YT.PlayerState.PLAYING) {
+            const t = getCur()
+            if (e.data === YT?.PlayerState?.PLAYING) {
               if (suppressEvents.current) {
                 suppressEvents.current = false
               } else {
                 onUserPlay?.(t)
               }
-            } else if (e.data === YT.PlayerState.PAUSED) {
+            } else if (e.data === YT?.PlayerState?.PAUSED) {
               if (suppressEvents.current) {
                 suppressEvents.current = false
               } else {
@@ -133,7 +146,7 @@ export function YouTubePlayer({
 
       // Detect user seeks by polling: YT doesn't fire a dedicated seek event.
       pollId = window.setInterval(() => {
-        const cur = ytRef.current?.getCurrentTime?.() ?? 0
+        const cur = getCur()
         const delta = cur - lastTime.current
         // Big jumps not explained by ~1s of elapsed playback → treat as seek.
         if (Math.abs(delta) > 1.5) {
@@ -150,7 +163,11 @@ export function YouTubePlayer({
     return () => {
       destroyed = true
       if (pollId != null) window.clearInterval(pollId)
-      ytRef.current?.destroy?.()
+      try {
+        ytRef.current?.destroy?.()
+      } catch {
+        /* already torn down */
+      }
       ytRef.current = null
       onPlayer?.(null)
     }

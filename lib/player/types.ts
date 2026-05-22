@@ -16,6 +16,8 @@ export interface Player {
   currentTime(): number
   /** Duration in seconds (NaN if unknown). */
   duration(): number
+  /** True when the underlying media is not actively playing. */
+  isPaused(): boolean
   /** Tear down. */
   destroy(): void
 }

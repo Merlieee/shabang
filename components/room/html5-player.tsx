@@ -55,6 +55,9 @@ export function Html5Player({
       duration() {
         return v.duration
       },
+      isPaused() {
+        return v.paused
+      },
       destroy() {
         v.pause()
         v.removeAttribute("src")

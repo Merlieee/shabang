@@ -38,6 +38,8 @@ export function RoomClient({ roomId }: Props) {
     updatedAt: number
   } | null>(null)
   const [copied, setCopied] = useState(false)
+  /** True when the room is playing but the browser blocked our programmatic play(). */
+  const [needsGesture, setNeedsGesture] = useState(false)
 
   const socket = usePartySocket({
     host: PARTYKIT_HOST,
@@ -78,14 +80,55 @@ export function RoomClient({ roomId }: Props) {
       updatedAt: state.updatedAt,
     })
 
-    const targetNow = state.paused
-      ? state.position
-      : state.position + (Date.now() - state.updatedAt) / 1000
-    const cur = player.currentTime()
-    if (Math.abs(cur - targetNow) > 1.0) player.seek(targetNow)
-    if (state.paused) player.pause()
-    else player.play().catch(() => {})
+    try {
+      const targetNow = state.paused
+        ? state.position
+        : state.position + (Date.now() - state.updatedAt) / 1000
+      const cur = player.currentTime()
+      if (Math.abs(cur - targetNow) > 1.0) player.seek(targetNow)
+      if (state.paused) {
+        player.pause()
+        setNeedsGesture(false)
+      } else {
+        player.play().catch(() => {})
+      }
+    } catch (e) {
+      // Never let a stale/destroyed player ref crash the React tree.
+      console.warn("[room] failed to apply state", e)
+    }
   }, [state, player, lastApplied])
+
+  // Detect autoplay block: if room is playing but our player is still paused
+  // ~1.5s after applying state, prompt for a user gesture.
+  useEffect(() => {
+    if (!state || !player) return
+    if (state.paused) {
+      setNeedsGesture(false)
+      return
+    }
+    const id = window.setTimeout(() => {
+      try {
+        if (player.isPaused()) setNeedsGesture(true)
+      } catch {
+        /* ignore */
+      }
+    }, 1500)
+    return () => window.clearTimeout(id)
+  }, [state, player])
+
+  async function tapToStart() {
+    if (!player || !state) return
+    setNeedsGesture(false)
+    try {
+      const target = state.paused
+        ? state.position
+        : state.position + (Date.now() - state.updatedAt) / 1000
+      player.seek(target)
+      await player.play()
+    } catch {
+      /* user can still hit native play */
+    }
+  }
 
   useEffect(() => {
     if (!state || state.paused || !player) return
@@ -217,13 +260,27 @@ export function RoomClient({ roomId }: Props) {
       </header>
 
       <div
-        className="mx-auto aspect-video w-full overflow-hidden rounded-lg border bg-card"
+        className="relative mx-auto aspect-video w-full overflow-hidden rounded-lg border bg-card"
         style={{ maxWidth: "min(98vw, calc((100dvh - 90px) * 16 / 9))" }}
       >
         {playerView ?? (
           <div className="flex h-full w-full items-center justify-center bg-black text-sm text-muted-foreground">
             Paste a link or pick a file to start.
           </div>
+        )}
+        {needsGesture && (
+          <button
+            type="button"
+            onClick={tapToStart}
+            className="absolute inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm text-base font-medium text-white transition-opacity hover:bg-black/70"
+          >
+            <span className="flex items-center gap-2 rounded-full bg-white/10 px-5 py-3 ring-1 ring-white/30">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                <path d="M8 5v14l11-7z" />
+              </svg>
+              Tap to join playback
+            </span>
+          </button>
         )}
       </div>
 

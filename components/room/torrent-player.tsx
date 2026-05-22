@@ -115,6 +115,9 @@ export function TorrentPlayer({
       duration() {
         return v.duration
       },
+      isPaused() {
+        return v.paused
+      },
       destroy() {
         try {
           clientRef.current?.destroy?.()
