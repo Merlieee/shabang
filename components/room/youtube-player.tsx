@@ -55,6 +55,10 @@ export function YouTubePlayer({
     let destroyed = false
     let pollId: number | null = null
 
+    // React 19 / Next 16 may double-invoke this effect; clear any orphan host
+    // or stale iframe before we create our own.
+    while (wrapper.firstChild) wrapper.removeChild(wrapper.firstChild)
+
     // Create a host element manually — React doesn't know about it.
     const host = document.createElement("div")
     host.style.width = "100%"
@@ -176,8 +180,16 @@ export function YouTubePlayer({
         /* already torn down */
       }
       ytRef.current = null
-      // React will remove `wrapper` on unmount; whatever's inside (iframe
-      // replacement or host div) goes with it. We don't touch wrapper.children.
+      // If YT never upgraded our host to an iframe (e.g. cleanup ran before
+      // loadYT resolved), the host is still attached. Remove it so the next
+      // effect run doesn't stack a second host on top.
+      if (host.parentNode === wrapper) {
+        try {
+          wrapper.removeChild(host)
+        } catch {
+          /* already gone */
+        }
+      }
       onPlayer?.(null)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
