@@ -11,6 +11,7 @@ import type { ClientMessage, RoomState, ServerMessage, Source } from "@/lib/type
 import { YouTubePlayer } from "./youtube-player"
 import { Html5Player } from "./html5-player"
 import { SourcePicker } from "./source-picker"
+import { PlayerBoundary } from "./player-boundary"
 
 const TorrentPlayer = dynamic(
   () => import("./torrent-player").then((m) => m.TorrentPlayer),
@@ -123,8 +124,10 @@ export function RoomClient({ roomId }: Props) {
       const target = state.paused
         ? state.position
         : state.position + (Date.now() - state.updatedAt) / 1000
-      player.seek(target)
-      await player.play()
+      // playFrom is atomic — on YT it uses loadVideoById(startSeconds), which
+      // reliably begins playback at the target. seek-then-play raced with
+      // UNSTARTED state and restarted from 0.
+      await player.playFrom(target)
     } catch {
       /* user can still hit native play */
     }
@@ -263,11 +266,13 @@ export function RoomClient({ roomId }: Props) {
         className="relative mx-auto aspect-video w-full overflow-hidden rounded-lg border bg-card"
         style={{ maxWidth: "min(98vw, calc((100dvh - 90px) * 16 / 9))" }}
       >
-        {playerView ?? (
-          <div className="flex h-full w-full items-center justify-center bg-black text-sm text-muted-foreground">
-            Paste a link or pick a file to start.
-          </div>
-        )}
+        <PlayerBoundary>
+          {playerView ?? (
+            <div className="flex h-full w-full items-center justify-center bg-black text-sm text-muted-foreground">
+              Paste a link or pick a file to start.
+            </div>
+          )}
+        </PlayerBoundary>
         {needsGesture && (
           <button
             type="button"

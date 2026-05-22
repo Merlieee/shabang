@@ -12,6 +12,9 @@ export interface Player {
   pause(): void
   /** Seek to seconds. */
   seek(seconds: number): void
+  /** Atomic "start playing at this position" — required for late-joiner sync,
+      because seek-then-play is unreliable on YT when the player is UNSTARTED. */
+  playFrom(seconds: number): Promise<void>
   /** Current playhead in seconds. */
   currentTime(): number
   /** Duration in seconds (NaN if unknown). */

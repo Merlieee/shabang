@@ -109,6 +109,15 @@ export function TorrentPlayer({
         suppress.current = true
         v.currentTime = seconds
       },
+      async playFrom(seconds) {
+        v.currentTime = seconds
+        suppress.current = true
+        try {
+          await v.play()
+        } catch {
+          suppress.current = false
+        }
+      },
       currentTime() {
         return v.currentTime
       },
