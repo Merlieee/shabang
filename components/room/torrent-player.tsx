@@ -16,10 +16,11 @@ function loadWebTorrent(): Promise<any> {
   // Use new Function to hide the import from Next's bundler — we want it to fetch
   // the prebuilt ESM bundle at runtime, not statically resolve "webtorrent".
   const importESM = new Function("u", "return import(u)")
-  webTorrentReady = importESM("/webtorrent.min.js").then((mod: any) => {
+  const p: Promise<any> = importESM("/webtorrent.min.js").then((mod: any) => {
     return mod?.default ?? mod?.WebTorrent ?? mod
   })
-  return webTorrentReady
+  webTorrentReady = p
+  return p
 }
 
 export type TorrentPlayerProps = {
