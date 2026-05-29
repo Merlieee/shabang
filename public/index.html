@@ -451,7 +451,7 @@
     if (!player.paused) video.play().catch(() => {});
   }
 
-  function loadPlayer(videoId, streamUrl, title, uploader, startTime = 0, playing = false) {
+  function loadPlayer(videoId, streamUrl, title, uploader, startTime = 0, playing = false, duration = null) {
     currentVideoId = videoId;
     if (title) {
       videoTitle.textContent = title;
@@ -478,6 +478,7 @@
       settings: ['quality', 'speed'],
       speed: { selected: 1, options: [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2] },
       seekTime: 5,
+      ...(duration ? { duration } : {}),
     });
 
     player.on('ready', () => {
@@ -531,10 +532,10 @@
 
   socket.on('member-count', count => { memberCountEl.textContent = count; });
 
-  socket.on('video-loaded', ({ videoId, streamUrl, title, uploader }) => {
+  socket.on('video-loaded', ({ videoId, streamUrl, title, uploader, duration }) => {
     playBtn.disabled = false;
     setStatus('');
-    loadPlayer(videoId, streamUrl, title, uploader, 0, true);
+    loadPlayer(videoId, streamUrl, title, uploader, 0, true, duration);
   });
 
   socket.on('status', ({ msg, type }) => setStatus(msg, type));

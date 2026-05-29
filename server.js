@@ -143,6 +143,7 @@ io.on('connection', (socket) => {
         streamUrl: `/api/stream/${videoId}`,
         title: room.title,
         uploader: room.uploader,
+        duration: meta.duration,
       });
     } catch (err) {
       socket.emit('status', { msg: `Error: ${err.message}`, type: 'error' });
