@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Shabang</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.plyr.io/3.7.8/plyr.css" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --accent: #3B52F4;
+      --accent-hover: #2f44e0;
+      --accent-light: #1a1f3a;
+      --bg: #0f0f0f;
+      --border: #2a2a2a;
+      --text: #f0f0f0;
+      --muted: #888;
+      --muted-light: #555;
+      --surface: #181818;
+      --nav-h: 60px;
+      --plyr-color-main: #3B52F4;
+      --plyr-video-background: #000;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── Nav ── */
+    nav {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 40px;
+      height: var(--nav-h);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      background: rgba(15,15,15,0.92);
+      backdrop-filter: blur(12px);
+      z-index: 100;
+    }
+
+    .nav-logo {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: -0.3px;
+    }
+
+    /* ── Page ── */
+    .page {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 56px 24px 80px;
+      transition: max-width 0.35s ease, padding 0.35s ease;
+    }
+
+    /* ── Clipboard CTA ── */
+    .input-row {
+      display: flex;
+      justify-content: flex-end;
+      margin-bottom: 16px;
+    }
+
+    #play-btn {
+      height: 34px;
+      padding: 0 14px;
+      background: #fff;
+      color: #18181b;
+      border: none;
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      white-space: nowrap;
+    }
+
+    #play-btn:hover { opacity: 0.85; }
+    #play-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* ── Player ── */
+    #player-container {
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      background: #000;
+      border-radius: 12px;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      transition: border-radius 0.35s ease;
+    }
+
+    #player-container.empty {
+      background: var(--surface);
+      border: 1px solid var(--border);
+    }
+
+    #player-container.empty::after {
+      content: 'Play from clipboard to start';
+      font-size: 0.85rem;
+      color: var(--muted-light);
+      font-weight: 500;
+    }
+
+    video { width: 100%; display: block; }
+
+    /* ── Theatre mode ── */
+    body.theatre .page {
+      max-width: 100%;
+      padding: 40px 0;
+    }
+
+    body.theatre .input-row,
+    body.theatre #video-meta,
+    body.theatre #status {
+      display: none !important;
+    }
+
+    body.theatre #player-container {
+      border-radius: 0;
+      aspect-ratio: unset;
+      height: calc(100vh - var(--nav-h) - 80px);
+    }
+
+    body.theatre #player-container .plyr,
+    body.theatre #player-container .plyr--video {
+      height: 100%;
+    }
+
+    body.theatre #player-container video {
+      height: 100%;
+      object-fit: contain;
+    }
+
+    /* ── Meta ── */
+    #video-meta {
+      margin-top: 20px;
+      padding-bottom: 4px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    #video-title {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--text);
+      line-height: 1.4;
+      margin-bottom: 4px;
+    }
+
+    #video-uploader {
+      font-size: 0.82rem;
+      color: var(--muted);
+      font-weight: 500;
+    }
+
+    /* ── Status ── */
+    #status {
+      margin-top: 14px;
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: var(--muted-light);
+      min-height: 20px;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    #status:not(:empty)::before {
+      content: '';
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: currentColor;
+      flex-shrink: 0;
+    }
+
+    #status.loading { color: var(--muted); }
+    #status.loading::before { animation: blink 1s infinite; }
+    #status.downloading { color: #059669; }
+    #status.downloading::before { animation: blink 1.4s infinite; }
+    #status.error { color: #dc2626; }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.25; }
+    }
+
+    /* ── Plyr overrides ── */
+    .plyr--video .plyr__controls {
+      background: linear-gradient(transparent, rgba(0,0,0,0.65));
+    }
+
+    .plyr__control--overlaid {
+      background: var(--accent) !important;
+    }
+
+    .plyr__control--overlaid:hover {
+      background: var(--accent-hover) !important;
+      transform: scale(1.06);
+    }
+
+    /* Theatre button inside Plyr bar */
+    .plyr__theatre-btn {
+      background: none;
+      border: none;
+      color: rgba(255,255,255,0.8);
+      cursor: pointer;
+      padding: 4px 6px;
+      display: flex;
+      align-items: center;
+      gap: 0;
+      border-radius: 4px;
+      transition: color 0.15s, gap 0.2s ease;
+      flex-shrink: 0;
+      overflow: hidden;
+    }
+
+    .plyr__theatre-btn:hover {
+      color: #fff;
+      gap: 6px;
+    }
+
+    .plyr__theatre-btn.active { color: var(--accent); }
+
+    .plyr__theatre-label {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 0.72rem;
+      font-weight: 600;
+      white-space: nowrap;
+      max-width: 0;
+      opacity: 0;
+      transition: max-width 0.22s ease, opacity 0.18s ease;
+      overflow: hidden;
+    }
+
+    .plyr__theatre-btn:hover .plyr__theatre-label {
+      max-width: 100px;
+      opacity: 1;
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-logo">shabang</div>
+</nav>
+
+<div class="page">
+  <div class="input-row">
+    <button id="play-btn">
+      <svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M3 2.5h6.5a.5.5 0 0 1 .5.5v1h1V3a1.5 1.5 0 0 0-1.5-1.5H3A1.5 1.5 0 0 0 1.5 3v7A1.5 1.5 0 0 0 3 11.5h1v-1H3a.5.5 0 0 1-.5-.5V3a.5.5 0 0 1 .5-.5z" fill="currentColor"/>
+        <rect x="4.5" y="4.5" width="9" height="9" rx="1" stroke="currentColor" stroke-width="1.1" fill="none"/>
+      </svg>
+      Play from clipboard
+    </button>
+  </div>
+
+  <div id="player-container" class="empty"></div>
+
+  <div id="video-meta" style="display:none">
+    <div id="video-title"></div>
+    <div id="video-uploader"></div>
+  </div>
+
+  <div id="status"></div>
+</div>
+
+<script src="https://cdn.plyr.io/3.7.8/plyr.polyfilled.js"></script>
+<script>
+  const playBtn = document.getElementById('play-btn');
+  const playerContainer = document.getElementById('player-container');
+  const statusBar = document.getElementById('status');
+  const videoMeta = document.getElementById('video-meta');
+  const videoTitle = document.getElementById('video-title');
+  const videoUploader = document.getElementById('video-uploader');
+
+  let player = null;
+  let sessionId = localStorage.getItem('shabang_session') || null;
+  let progressInterval = null;
+  let currentVideoId = null;
+  let theatreMode = false;
+
+  function toggleTheatre() {
+    theatreMode = !theatreMode;
+    document.body.classList.toggle('theatre', theatreMode);
+    const btn = document.querySelector('.plyr__theatre-btn');
+    if (btn) btn.classList.toggle('active', theatreMode);
+  }
+
+  function injectPlayerControls() {
+    const c = player.elements.container;
+
+    // Custom skip icons
+    const rewindBtn = c.querySelector('button[data-plyr="rewind"]');
+    const ffBtn = c.querySelector('button[data-plyr="fast-forward"]');
+    if (rewindBtn) rewindBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20" aria-hidden="true">
+      <path d="M12 5V2L7.5 6 12 10V7a5 5 0 1 1-4.9 5.95l-1.97-.4A7 7 0 1 0 12 5z"/>
+      <text x="12.2" y="15" text-anchor="middle" font-size="5.2" font-weight="700" font-family="sans-serif">5</text>
+    </svg>`;
+    if (ffBtn) ffBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20" aria-hidden="true">
+      <path d="M12 5V2l4.5 4L12 10V7a5 5 0 1 0 4.9 5.95l1.97-.4A7 7 0 1 1 12 5z"/>
+      <text x="11.8" y="15" text-anchor="middle" font-size="5.2" font-weight="700" font-family="sans-serif">5</text>
+    </svg>`;
+
+    // Theatre button — insert before fullscreen in the controls bar
+    const controls = c.querySelector('.plyr__controls');
+    const fullscreenBtn = c.querySelector('button[data-plyr="fullscreen"]');
+    if (controls && fullscreenBtn) {
+      const theatreBtn = document.createElement('button');
+      theatreBtn.className = 'plyr__theatre-btn' + (theatreMode ? ' active' : '');
+      theatreBtn.title = 'Theatre mode';
+      theatreBtn.innerHTML = `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <rect x="1.5" y="4.5" width="17" height="11" rx="1.5" stroke="currentColor" stroke-width="1.5"/>
+        <path d="M6 10h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+      </svg><span class="plyr__theatre-label">Theatre mode</span>`;
+      theatreBtn.addEventListener('click', toggleTheatre);
+      controls.insertBefore(theatreBtn, fullscreenBtn);
+    }
+  }
+
+  function setStatus(msg, type = '') {
+    statusBar.textContent = msg;
+    statusBar.className = 'status-bar ' + type;
+  }
+
+  function formatBytes(bytes) {
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  }
+
+  function stopProgress() {
+    if (progressInterval) { clearInterval(progressInterval); progressInterval = null; }
+  }
+
+  function trackProgress(videoId) {
+    stopProgress();
+    progressInterval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/progress/${videoId}`);
+        const data = await res.json();
+        if (data.status === 'downloading') {
+          setStatus(`Downloading — ${formatBytes(data.downloadedBytes)} buffered`, 'downloading');
+        } else if (data.status === 'complete') {
+          setStatus(`Downloaded — ${formatBytes(data.downloadedBytes)}`, '');
+          stopProgress();
+        } else if (data.status === 'error') {
+          setStatus(`Error: ${data.error}`, 'error');
+          stopProgress();
+        }
+      } catch {}
+    }, 1500);
+  }
+
+  async function playVideo(url) {
+    if (!url.trim()) return;
+    playBtn.disabled = true;
+    setStatus('Fetching video info...', 'loading');
+    videoMeta.style.display = 'none';
+
+    try {
+      const infoRes = await fetch(`/api/info?url=${encodeURIComponent(url)}`);
+      const info = await infoRes.json();
+      if (info.error) throw new Error(info.error);
+
+      videoTitle.textContent = info.title;
+      videoUploader.textContent = info.uploader;
+      videoMeta.style.display = 'block';
+
+      setStatus('Starting download...', 'loading');
+
+      const playRes = await fetch('/api/play', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url, sessionId }),
+      });
+      const playData = await playRes.json();
+      if (playData.error) throw new Error(playData.error);
+
+      sessionId = playData.sessionId;
+      localStorage.setItem('shabang_session', sessionId);
+      currentVideoId = playData.videoId;
+
+      if (player) { player.destroy(); player = null; }
+
+      playerContainer.classList.remove('empty');
+      playerContainer.innerHTML = '';
+      const video = document.createElement('video');
+      video.id = 'shabang-video';
+      video.controls = true;
+      video.autoplay = true;
+      const source = document.createElement('source');
+      source.src = playData.streamUrl;
+      source.type = 'video/mp4';
+      video.appendChild(source);
+      playerContainer.appendChild(video);
+
+      player = new Plyr('#shabang-video', {
+        controls: ['play-large', 'play', 'rewind', 'fast-forward', 'progress',
+                   'current-time', 'duration', 'mute', 'volume', 'settings',
+                   'fullscreen'],
+        settings: ['quality', 'speed'],
+        speed: { selected: 1, options: [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2] },
+        seekTime: 5,
+      });
+
+      player.on('ready', injectPlayerControls);
+
+      trackProgress(playData.videoId);
+
+    } catch (err) {
+      setStatus(`Error: ${err.message}`, 'error');
+    } finally {
+      playBtn.disabled = false;
+    }
+  }
+
+  async function playFromClipboard() {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (!text.trim()) return setStatus('Clipboard is empty', 'error');
+      playVideo(text.trim());
+    } catch {
+      setStatus('Clipboard access denied — check browser permissions', 'error');
+    }
+  }
+
+  playBtn.addEventListener('click', playFromClipboard);
+
+  document.addEventListener('paste', (e) => {
+    const text = (e.clipboardData || window.clipboardData).getData('text');
+    if (text.trim()) playVideo(text.trim());
+  });
+</script>
+</body>
+</html>
