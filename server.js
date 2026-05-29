@@ -181,6 +181,8 @@ io.on('connection', (socket) => {
 
 // ── REST API ─────────────────────────────────────────────────────────────────
 
+app.use(express.json());
+app.use(express.static('public'));
 app.get('/health', (req, res) => res.send('ok'));
 
 // Proxy YouTube stream through our server with range request support
