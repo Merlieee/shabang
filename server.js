@@ -150,9 +150,11 @@ io.on('connection', (socket) => {
           `https://www.youtube.com/watch?v=${videoId}`,
         ]));
         let out = '';
+        let err = '';
         ytdlp.stdout.on('data', d => out += d);
+        ytdlp.stderr.on('data', d => err += d);
         ytdlp.on('close', code => {
-          if (code !== 0) return reject(new Error('Failed to fetch video info'));
+          if (code !== 0) return reject(new Error(err.trim() || 'yt-dlp failed'));
           try { resolve(JSON.parse(out)); } catch { reject(new Error('Failed to parse video info')); }
         });
         ytdlp.on('error', reject);
