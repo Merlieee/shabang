@@ -388,7 +388,6 @@
 
   let player = null;
   let currentRoomId = null;
-  let progressInterval = null;
   let theatreMode = false;
   let isSyncing = false;
 
@@ -483,7 +482,6 @@
       });
     });
 
-    trackProgress(videoId);
   }
 
   // ── Play from clipboard ──────────────────────────────────────────────────
@@ -543,36 +541,6 @@
     player.currentTime = currentTime;
     setTimeout(() => { isSyncing = false; }, 300);
   });
-
-  // ── Progress tracking ────────────────────────────────────────────────────
-
-  function formatBytes(bytes) {
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-  }
-
-  function stopProgress() {
-    if (progressInterval) { clearInterval(progressInterval); progressInterval = null; }
-  }
-
-  function trackProgress(videoId) {
-    stopProgress();
-    progressInterval = setInterval(async () => {
-      try {
-        const res = await fetch(`/api/progress/${videoId}`);
-        const data = await res.json();
-        if (data.status === 'downloading') {
-          setStatus(`Downloading — ${formatBytes(data.downloadedBytes)} buffered`, 'downloading');
-        } else if (data.status === 'complete') {
-          setStatus(`Downloaded — ${formatBytes(data.downloadedBytes)}`, '');
-          stopProgress();
-        } else if (data.status === 'error') {
-          setStatus(`Error: ${data.error}`, 'error');
-          stopProgress();
-        }
-      } catch {}
-    }, 1500);
-  }
 
   function setStatus(msg, type = '') {
     statusBar.textContent = msg;

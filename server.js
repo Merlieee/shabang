@@ -1,5 +1,6 @@
 const express = require('express');
 const http = require('http');
+const https = require('https');
 const { Server } = require('socket.io');
 const { spawn } = require('child_process');
 const fs = require('fs');
@@ -15,7 +16,6 @@ const COOKIES_FILE = path.join(TMP_DIR, 'yt-cookies.txt');
 
 if (!fs.existsSync(TMP_DIR)) fs.mkdirSync(TMP_DIR);
 
-// Write cookies from env var to file so yt-dlp can use them
 if (process.env.YT_COOKIES) {
   fs.writeFileSync(COOKIES_FILE, process.env.YT_COOKIES, 'utf8');
   console.log('YouTube cookies loaded from environment');
@@ -27,79 +27,57 @@ function ytdlpArgs(extra = []) {
   return args;
 }
 
-app.use(express.json());
-app.use(express.static('public'));
+function extractVideoId(input) {
+  const urlMatch = input.match(/(?:v=|youtu\.be\/|embed\/)([a-zA-Z0-9_-]{11})/);
+  return urlMatch ? urlMatch[1] : input.trim();
+}
 
-app.get('/health', (req, res) => res.send('ok'));
-
-// downloads: videoId -> { filePath, process, ready, size, error }
-const downloads = new Map();
-// rooms: roomId -> { videoId, streamUrl, playing, currentTime, title, uploader }
+// streams: videoId -> { url, title, uploader, fetchedAt }
+const streams = new Map();
+// rooms: roomId -> { videoId, playing, currentTime, title, uploader }
 const rooms = new Map();
 
 function generateRoomId() {
   return Math.random().toString(36).substring(2, 8).toUpperCase();
 }
 
-function getTmpPath(videoId) {
-  return path.join(TMP_DIR, `${videoId}.mp4`);
-}
-
-function cleanupVideo(videoId) {
-  const info = downloads.get(videoId);
-  if (!info) return;
-  if (info.process) { try { info.process.kill(); } catch {} }
-  try { if (fs.existsSync(info.filePath)) fs.unlinkSync(info.filePath); } catch {}
-  downloads.delete(videoId);
-}
-
-function extractVideoId(input) {
-  const urlMatch = input.match(/(?:v=|youtu\.be\/|embed\/)([a-zA-Z0-9_-]{11})/);
-  return urlMatch ? urlMatch[1] : input.trim();
-}
-
-function startDownload(videoId) {
+function getVideoInfo(videoId) {
   return new Promise((resolve, reject) => {
-    const filePath = getTmpPath(videoId);
-    if (downloads.has(videoId)) return resolve(downloads.get(videoId));
-
-    const info = { filePath, process: null, ready: false, size: 0, error: null };
-    downloads.set(videoId, info);
-
     const ytdlp = spawn('yt-dlp', ytdlpArgs([
-      '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
-      '--merge-output-format', 'mp4',
-      '-o', filePath,
+      '--dump-json', '--no-playlist',
+      `https://www.youtube.com/watch?v=${videoId}`,
+    ]));
+    let out = '';
+    let err = '';
+    ytdlp.stdout.on('data', d => out += d);
+    ytdlp.stderr.on('data', d => err += d);
+    ytdlp.on('close', code => {
+      if (code !== 0) return reject(new Error(err.trim() || 'yt-dlp failed'));
+      try { resolve(JSON.parse(out)); } catch { reject(new Error('Failed to parse video info')); }
+    });
+    ytdlp.on('error', reject);
+  });
+}
+
+// Get direct stream URL — picks best pre-muxed format so we get a single URL
+function getStreamUrl(videoId) {
+  return new Promise((resolve, reject) => {
+    const ytdlp = spawn('yt-dlp', ytdlpArgs([
+      '-g',
+      '--format', 'best[height<=1080][ext=mp4]/best[height<=1080]/best[ext=mp4]/best',
       '--no-playlist',
       `https://www.youtube.com/watch?v=${videoId}`,
     ]));
-
-    info.process = ytdlp;
-
-    ytdlp.stderr.on('data', () => {
-      if (!info.ready && fs.existsSync(filePath)) {
-        info.ready = true;
-        resolve(info);
-      }
+    let out = '';
+    let err = '';
+    ytdlp.stdout.on('data', d => out += d);
+    ytdlp.stderr.on('data', d => err += d);
+    ytdlp.on('close', code => {
+      const url = out.trim().split('\n')[0]; // take first URL if multiple
+      if (code !== 0 || !url) return reject(new Error(err.trim() || 'Failed to get stream URL'));
+      resolve(url);
     });
-
-    ytdlp.on('close', (code) => {
-      info.process = null;
-      if (code === 0) {
-        info.ready = true;
-        if (fs.existsSync(filePath)) info.size = fs.statSync(filePath).size;
-        resolve(info);
-      } else if (code !== null && !info.ready) {
-        info.error = `yt-dlp exited with code ${code}`;
-        reject(new Error(info.error));
-      }
-    });
-
-    ytdlp.on('error', (err) => { info.error = err.message; reject(err); });
-
-    setTimeout(() => {
-      if (!info.ready && fs.existsSync(filePath)) { info.ready = true; resolve(info); }
-    }, 2000);
+    ytdlp.on('error', reject);
   });
 }
 
@@ -119,7 +97,7 @@ io.on('connection', (socket) => {
 
   socket.on('create-room', (callback) => {
     const roomId = generateRoomId();
-    rooms.set(roomId, { videoId: null, streamUrl: null, playing: false, currentTime: 0, title: null, uploader: null });
+    rooms.set(roomId, { videoId: null, playing: false, currentTime: 0, title: null, uploader: null });
     socket.join(roomId);
     currentRoomId = roomId;
     broadcastMemberCount(roomId);
@@ -140,25 +118,16 @@ io.on('connection', (socket) => {
     if (!room) return;
 
     const videoId = extractVideoId(url);
-    socket.emit('status', { msg: 'Fetching video info...', type: 'loading' });
+    socket.emit('status', { msg: 'Fetching video...', type: 'loading' });
 
     try {
-      // Get metadata
-      const meta = await new Promise((resolve, reject) => {
-        const ytdlp = spawn('yt-dlp', ytdlpArgs([
-          '--dump-json', '--no-playlist',
-          `https://www.youtube.com/watch?v=${videoId}`,
-        ]));
-        let out = '';
-        let err = '';
-        ytdlp.stdout.on('data', d => out += d);
-        ytdlp.stderr.on('data', d => err += d);
-        ytdlp.on('close', code => {
-          if (code !== 0) return reject(new Error(err.trim() || 'yt-dlp failed'));
-          try { resolve(JSON.parse(out)); } catch { reject(new Error('Failed to parse video info')); }
-        });
-        ytdlp.on('error', reject);
-      });
+      // Run info + stream URL fetch in parallel
+      const [meta, streamUrl] = await Promise.all([
+        getVideoInfo(videoId),
+        getStreamUrl(videoId),
+      ]);
+
+      streams.set(videoId, { url: streamUrl, fetchedAt: Date.now() });
 
       room.videoId = videoId;
       room.title = meta.title;
@@ -166,13 +135,9 @@ io.on('connection', (socket) => {
       room.currentTime = 0;
       room.playing = false;
 
-      socket.emit('status', { msg: 'Starting download...', type: 'loading' });
-      await startDownload(videoId);
-
-      room.streamUrl = `/api/stream/${videoId}`;
       io.to(roomId).emit('video-loaded', {
         videoId,
-        streamUrl: room.streamUrl,
+        streamUrl: `/api/stream/${videoId}`,
         title: room.title,
         uploader: room.uploader,
       });
@@ -208,56 +173,43 @@ io.on('connection', (socket) => {
     if (!currentRoomId) return;
     setTimeout(() => {
       const count = getMemberCount(currentRoomId);
-      if (count === 0) {
-        const room = rooms.get(currentRoomId);
-        if (room?.videoId) cleanupVideo(room.videoId);
-        rooms.delete(currentRoomId);
-      } else {
-        broadcastMemberCount(currentRoomId);
-      }
+      if (count === 0) rooms.delete(currentRoomId);
+      else broadcastMemberCount(currentRoomId);
     }, 500);
   });
 });
 
 // ── REST API ─────────────────────────────────────────────────────────────────
 
-app.get('/api/progress/:videoId', (req, res) => {
-  const info = downloads.get(req.params.videoId);
-  if (!info) return res.json({ status: 'not_found' });
-  const currentSize = fs.existsSync(info.filePath) ? fs.statSync(info.filePath).size : 0;
-  res.json({
-    status: info.error ? 'error' : info.process ? 'downloading' : 'complete',
-    downloadedBytes: currentSize,
-    error: info.error || null,
-  });
-});
+app.get('/health', (req, res) => res.send('ok'));
 
+// Proxy YouTube stream through our server with range request support
 app.get('/api/stream/:videoId', (req, res) => {
-  const info = downloads.get(req.params.videoId);
-  if (!info || !fs.existsSync(info.filePath)) return res.status(404).json({ error: 'Video not found' });
+  const info = streams.get(req.params.videoId);
+  if (!info) return res.status(404).json({ error: 'Stream not found' });
 
-  const stat = fs.statSync(info.filePath);
-  const fileSize = stat.size;
-  const range = req.headers.range;
+  const ytUrl = new URL(info.url);
+  const options = {
+    hostname: ytUrl.hostname,
+    path: ytUrl.pathname + ytUrl.search,
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36',
+      ...(req.headers.range ? { Range: req.headers.range } : {}),
+    },
+  };
 
-  if (range) {
-    const parts = range.replace(/bytes=/, '').split('-');
-    const start = parseInt(parts[0], 10);
-    const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
-    res.writeHead(206, {
-      'Content-Range': `bytes ${start}-${end}/${fileSize}`,
-      'Accept-Ranges': 'bytes',
-      'Content-Length': end - start + 1,
-      'Content-Type': 'video/mp4',
-    });
-    fs.createReadStream(info.filePath, { start, end }).pipe(res);
-  } else {
-    res.writeHead(200, { 'Content-Length': fileSize, 'Content-Type': 'video/mp4', 'Accept-Ranges': 'bytes' });
-    fs.createReadStream(info.filePath).pipe(res);
-  }
+  const proxyReq = https.get(options, (proxyRes) => {
+    const forward = ['content-type', 'content-length', 'content-range', 'accept-ranges'];
+    forward.forEach(h => { if (proxyRes.headers[h]) res.setHeader(h, proxyRes.headers[h]); });
+    res.status(proxyRes.statusCode);
+    proxyRes.pipe(res);
+  });
+
+  proxyReq.on('error', (err) => {
+    if (!res.headersSent) res.status(502).json({ error: err.message });
+  });
+
+  req.on('close', () => proxyReq.destroy());
 });
-
-process.on('exit', () => { for (const [id] of downloads) cleanupVideo(id); });
-process.on('SIGINT', () => { for (const [id] of downloads) cleanupVideo(id); process.exit(); });
 
 httpServer.listen(PORT, '0.0.0.0', () => console.log(`Shabang running at http://localhost:${PORT}`));
