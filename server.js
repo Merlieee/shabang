@@ -17,6 +17,8 @@ if (!fs.existsSync(TMP_DIR)) fs.mkdirSync(TMP_DIR);
 app.use(express.json());
 app.use(express.static('public'));
 
+app.get('/health', (req, res) => res.send('ok'));
+
 // downloads: videoId -> { filePath, process, ready, size, error }
 const downloads = new Map();
 // rooms: roomId -> { videoId, streamUrl, playing, currentTime, title, uploader }
