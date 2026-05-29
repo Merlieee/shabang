@@ -240,4 +240,4 @@ app.get('/api/stream/:videoId', (req, res) => {
 process.on('exit', () => { for (const [id] of downloads) cleanupVideo(id); });
 process.on('SIGINT', () => { for (const [id] of downloads) cleanupVideo(id); process.exit(); });
 
-httpServer.listen(PORT, () => console.log(`Shabang running at http://localhost:${PORT}`));
+httpServer.listen(PORT, '0.0.0.0', () => console.log(`Shabang running at http://localhost:${PORT}`));
