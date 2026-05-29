@@ -67,16 +67,11 @@
       padding: 24px;
     }
 
-    #lobby h2 {
-      font-size: 1.4rem;
+    #lobby .lobby-logo {
+      font-size: 2rem;
       font-weight: 700;
-      letter-spacing: -0.3px;
-      margin-bottom: 4px;
-    }
-
-    #lobby p {
-      font-size: 0.88rem;
-      color: var(--muted);
+      letter-spacing: -0.5px;
+      color: var(--text);
       margin-bottom: 8px;
     }
 
@@ -89,64 +84,18 @@
     #create-room-btn {
       height: 42px;
       padding: 0 22px;
-      background: var(--accent);
-      color: #fff;
+      background: #fff;
+      color: #18181b;
       border: none;
       border-radius: 8px;
       font-family: inherit;
       font-size: 0.9rem;
       font-weight: 600;
       cursor: pointer;
-      transition: background 0.15s;
+      transition: opacity 0.15s;
     }
 
-    #create-room-btn:hover { background: var(--accent-hover); }
-
-    .lobby-divider {
-      font-size: 0.8rem;
-      color: var(--muted-light);
-    }
-
-    .join-form {
-      display: flex;
-      gap: 8px;
-    }
-
-    #join-input {
-      height: 42px;
-      width: 130px;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      background: var(--surface);
-      color: var(--text);
-      font-family: inherit;
-      font-size: 0.88rem;
-      font-weight: 600;
-      padding: 0 14px;
-      outline: none;
-      text-transform: uppercase;
-      letter-spacing: 0.1em;
-      transition: border-color 0.15s;
-    }
-
-    #join-input:focus { border-color: var(--accent); }
-    #join-input::placeholder { color: var(--muted-light); text-transform: none; letter-spacing: 0; font-weight: 400; }
-
-    #join-room-btn {
-      height: 42px;
-      padding: 0 18px;
-      background: var(--surface);
-      color: var(--text);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      font-family: inherit;
-      font-size: 0.88rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: border-color 0.15s;
-    }
-
-    #join-room-btn:hover { border-color: var(--accent); }
+    #create-room-btn:hover { opacity: 0.85; }
 
     /* ── Room ── */
     #room { display: none; }
@@ -162,26 +111,9 @@
     .room-bar {
       display: flex;
       align-items: center;
-      justify-content: space-between;
+      justify-content: flex-end;
+      gap: 10px;
       margin-bottom: 16px;
-    }
-
-    .room-info {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-
-    .room-id {
-      font-size: 0.78rem;
-      font-weight: 700;
-      color: var(--muted);
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-    }
-
-    .room-id span {
-      color: var(--text);
     }
 
     .members-badge {
@@ -199,12 +131,6 @@
       border-radius: 50%;
       background: #22c55e;
       animation: blink 2s infinite;
-    }
-
-    .room-actions {
-      display: flex;
-      align-items: center;
-      gap: 8px;
     }
 
     #copy-link-btn {
@@ -226,13 +152,6 @@
 
     #copy-link-btn:hover { color: var(--text); border-color: var(--muted); }
     #copy-link-btn.copied { color: #22c55e; border-color: #22c55e; }
-
-    /* ── Clipboard CTA ── */
-    .input-row {
-      display: flex;
-      justify-content: flex-end;
-      margin-bottom: 16px;
-    }
 
     #play-btn {
       height: 34px;
@@ -289,7 +208,6 @@
     }
 
     body.theatre .room-bar,
-    body.theatre .input-row,
     body.theatre #video-meta,
     body.theatre #status {
       display: none !important;
@@ -411,15 +329,9 @@
 
 <!-- Lobby -->
 <div id="lobby">
-  <h2>Watch together.</h2>
-  <p>Create a room and share the link — everyone stays in sync.</p>
+  <div class="lobby-logo">shabang</div>
   <div class="lobby-actions">
     <button id="create-room-btn">Create room</button>
-    <span class="lobby-divider">or</span>
-    <div class="join-form">
-      <input id="join-input" type="text" placeholder="Room code" maxlength="6" autocomplete="off" spellcheck="false" />
-      <button id="join-room-btn">Join</button>
-    </div>
   </div>
 </div>
 
@@ -427,25 +339,17 @@
 <div id="room">
   <div class="page">
     <div class="room-bar">
-      <div class="room-info">
-        <div class="room-id">Room <span id="room-id-display"></span></div>
-        <div class="members-badge">
-          <div class="members-dot"></div>
-          <span id="member-count">1</span> watching
-        </div>
+      <div class="members-badge">
+        <div class="members-dot"></div>
+        <span id="member-count">1</span> watching
       </div>
-      <div class="room-actions">
-        <button id="copy-link-btn">
-          <svg width="12" height="12" viewBox="0 0 15 15" fill="none">
-            <path d="M3 2.5h6.5a.5.5 0 0 1 .5.5v1h1V3a1.5 1.5 0 0 0-1.5-1.5H3A1.5 1.5 0 0 0 1.5 3v7A1.5 1.5 0 0 0 3 11.5h1v-1H3a.5.5 0 0 1-.5-.5V3a.5.5 0 0 1 .5-.5z" fill="currentColor"/>
-            <rect x="4.5" y="4.5" width="9" height="9" rx="1" stroke="currentColor" stroke-width="1.1" fill="none"/>
-          </svg>
-          Copy invite link
-        </button>
-      </div>
-    </div>
-
-    <div class="input-row">
+      <button id="copy-link-btn">
+        <svg width="12" height="12" viewBox="0 0 15 15" fill="none">
+          <path d="M3 2.5h6.5a.5.5 0 0 1 .5.5v1h1V3a1.5 1.5 0 0 0-1.5-1.5H3A1.5 1.5 0 0 0 1.5 3v7A1.5 1.5 0 0 0 3 11.5h1v-1H3a.5.5 0 0 1-.5-.5V3a.5.5 0 0 1 .5-.5z" fill="currentColor"/>
+          <rect x="4.5" y="4.5" width="9" height="9" rx="1" stroke="currentColor" stroke-width="1.1" fill="none"/>
+        </svg>
+        Copy invite link
+      </button>
       <button id="play-btn">
         <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
           <path d="M3 2.5h6.5a.5.5 0 0 1 .5.5v1h1V3a1.5 1.5 0 0 0-1.5-1.5H3A1.5 1.5 0 0 0 1.5 3v7A1.5 1.5 0 0 0 3 11.5h1v-1H3a.5.5 0 0 1-.5-.5V3a.5.5 0 0 1 .5-.5z" fill="currentColor"/>
@@ -474,9 +378,6 @@
   const lobby = document.getElementById('lobby');
   const roomEl = document.getElementById('room');
   const createRoomBtn = document.getElementById('create-room-btn');
-  const joinInput = document.getElementById('join-input');
-  const joinRoomBtn = document.getElementById('join-room-btn');
-  const roomIdDisplay = document.getElementById('room-id-display');
   const memberCountEl = document.getElementById('member-count');
   const copyLinkBtn = document.getElementById('copy-link-btn');
   const playBtn = document.getElementById('play-btn');
@@ -496,7 +397,6 @@
 
   function enterRoom(roomId) {
     currentRoomId = roomId;
-    roomIdDisplay.textContent = roomId;
     history.replaceState(null, '', `?room=${roomId}`);
     lobby.style.display = 'none';
     roomEl.style.display = 'block';
@@ -506,14 +406,9 @@
     socket.emit('create-room', ({ roomId }) => enterRoom(roomId));
   });
 
-  joinRoomBtn.addEventListener('click', joinRoom);
-  joinInput.addEventListener('keydown', e => { if (e.key === 'Enter') joinRoom(); });
-
-  function joinRoom() {
-    const code = joinInput.value.trim().toUpperCase();
-    if (!code) return;
+  function joinRoom(code) {
     socket.emit('join-room', code, ({ error, room }) => {
-      if (error) return setStatus('Room not found', 'error');
+      if (error) return;
       enterRoom(code);
       if (room.videoId) {
         loadPlayer(room.videoId, `/api/stream/${room.videoId}`, room.title, room.uploader, room.currentTime, room.playing);
@@ -524,8 +419,7 @@
   // Auto-join from URL
   const urlRoom = new URLSearchParams(location.search).get('room');
   if (urlRoom) {
-    joinInput.value = urlRoom;
-    socket.on('connect', () => joinRoom());
+    socket.on('connect', () => joinRoom(urlRoom));
   }
 
   copyLinkBtn.addEventListener('click', () => {
