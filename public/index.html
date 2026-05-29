@@ -395,6 +395,8 @@
   let player = null;
   let currentRoomId = null;
   let currentVideoId = null;
+  let streamStartTime = 0;
+  let currentQuality = null;
   let theatreMode = false;
   let isSyncing = false;
 
@@ -441,18 +443,28 @@
 
   // ── Video loading ────────────────────────────────────────────────────────
 
-  function reloadAt(t) {
-    if (!currentVideoId || !player) return;
+  function reloadAt(t, quality) {
+    if (!currentVideoId) return;
+    streamStartTime = Math.floor(t);
+    if (quality !== undefined) currentQuality = quality;
+    const q = currentQuality ? `&quality=${currentQuality}` : '';
+    const src = `/api/stream/${currentVideoId}?t=${streamStartTime}${q}`;
     const video = document.querySelector('#shabang-video');
     if (!video) return;
-    const src = `/api/stream/${currentVideoId}?t=${Math.floor(t)}`;
+    const wasPlaying = player && !player.paused;
     video.src = src;
     video.load();
-    if (!player.paused) video.play().catch(() => {});
+    if (wasPlaying) video.play().catch(() => {});
   }
 
-  function loadPlayer(videoId, streamUrl, title, uploader, startTime = 0, playing = false, duration = null) {
+  function actualTime() {
+    return streamStartTime + (player ? player.currentTime : 0);
+  }
+
+  function loadPlayer(videoId, streamUrl, title, uploader, startTime = 0, playing = false, duration = null, qualities = []) {
     currentVideoId = videoId;
+    streamStartTime = Math.floor(startTime);
+    currentQuality = null;
     if (title) {
       videoTitle.textContent = title;
       videoUploader.textContent = uploader;
@@ -472,13 +484,23 @@
     video.appendChild(source);
     playerContainer.appendChild(video);
 
+    const qualityConfig = qualities.length > 1 ? {
+      quality: {
+        default: qualities[0],
+        options: qualities,
+        forced: true,
+        onChange: (q) => reloadAt(actualTime(), q),
+      }
+    } : {};
+
     player = new Plyr('#shabang-video', {
       controls: ['play-large', 'play', 'rewind', 'fast-forward', 'progress',
                  'current-time', 'duration', 'mute', 'volume', 'settings', 'fullscreen'],
-      settings: ['quality', 'speed'],
+      settings: qualities.length > 1 ? ['quality', 'speed'] : ['speed'],
       speed: { selected: 1, options: [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2] },
       seekTime: 5,
       ...(duration ? { duration } : {}),
+      ...qualityConfig,
     });
 
     player.on('ready', () => {
@@ -488,15 +510,15 @@
       // Sync events — emit to room, guard against loops
       player.on('play', () => {
         if (isSyncing) return;
-        socket.emit('play', { roomId: currentRoomId, currentTime: player.currentTime });
+        socket.emit('play', { roomId: currentRoomId, currentTime: actualTime() });
       });
       player.on('pause', () => {
         if (isSyncing) return;
-        socket.emit('pause', { roomId: currentRoomId, currentTime: player.currentTime });
+        socket.emit('pause', { roomId: currentRoomId, currentTime: actualTime() });
       });
       player.on('seeked', () => {
         if (isSyncing) return;
-        const t = player.currentTime;
+        const t = actualTime();
         socket.emit('seek', { roomId: currentRoomId, currentTime: t });
         reloadAt(t);
       });
@@ -532,10 +554,10 @@
 
   socket.on('member-count', count => { memberCountEl.textContent = count; });
 
-  socket.on('video-loaded', ({ videoId, streamUrl, title, uploader, duration }) => {
+  socket.on('video-loaded', ({ videoId, streamUrl, title, uploader, duration, qualities }) => {
     playBtn.disabled = false;
     setStatus('');
-    loadPlayer(videoId, streamUrl, title, uploader, 0, true, duration);
+    loadPlayer(videoId, streamUrl, title, uploader, 0, true, duration, qualities || []);
   });
 
   socket.on('status', ({ msg, type }) => setStatus(msg, type));

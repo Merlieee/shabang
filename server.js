@@ -32,9 +32,10 @@ function extractVideoId(input) {
   return urlMatch ? urlMatch[1] : input.trim();
 }
 
-// streams: videoId -> { videoUrl, audioUrl?, title, uploader }
+// streams: videoId -> { title, uploader, duration, qualities: [1080,720,...] }
+// qualityUrls: `${videoId}_${height}` -> { videoUrl, audioUrl? }
 const streams = new Map();
-// rooms: roomId -> { videoId, playing, currentTime, title, uploader }
+const qualityUrls = new Map();
 const rooms = new Map();
 
 function generateRoomId() {
@@ -58,15 +59,17 @@ function getVideoInfo(videoId) {
   });
 }
 
-// Get best video+audio URLs. Returns { videoUrl, audioUrl? }
-// High quality: separate video+audio streams (720p+)
-// Fallback: single pre-muxed stream
-function getStreamUrls(videoId) {
+function fetchStreamUrls(videoId, height) {
+  const key = `${videoId}_${height || 'best'}`;
+  if (qualityUrls.has(key)) return Promise.resolve(qualityUrls.get(key));
+
+  const fmt = height
+    ? `bestvideo[height<=${height}][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=${height}]+bestaudio/best[height<=${height}][ext=mp4]/best[height<=${height}]`
+    : `bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best[ext=mp4]/best`;
+
   return new Promise((resolve, reject) => {
     const ytdlp = spawn('yt-dlp', ytdlpArgs([
-      '-g',
-      '--format', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best[ext=mp4]/best',
-      '--no-playlist',
+      '-g', '--format', fmt, '--no-playlist',
       `https://www.youtube.com/watch?v=${videoId}`,
     ]));
     let out = '', err = '';
@@ -75,14 +78,56 @@ function getStreamUrls(videoId) {
     ytdlp.on('close', code => {
       const lines = out.trim().split('\n').filter(Boolean);
       if (code !== 0 || !lines.length) return reject(new Error(err.trim() || 'Failed to get stream URLs'));
-      if (lines.length >= 2) {
-        resolve({ videoUrl: lines[0], audioUrl: lines[1] });
-      } else {
-        resolve({ videoUrl: lines[0] });
-      }
+      const urls = lines.length >= 2
+        ? { videoUrl: lines[0], audioUrl: lines[1] }
+        : { videoUrl: lines[0] };
+      qualityUrls.set(key, urls);
+      resolve(urls);
     });
     ytdlp.on('error', reject);
   });
+}
+
+function extractQualities(meta) {
+  const formats = meta.formats || [];
+  const heights = formats
+    .filter(f => f.height && f.vcodec && f.vcodec !== 'none' && f.height >= 360)
+    .map(f => f.height);
+  return [...new Set(heights)].sort((a, b) => b - a);
+}
+
+function pipeStream(info, startTime, res) {
+  if (info.audioUrl) {
+    const ff = spawn('ffmpeg', [
+      '-hide_banner', '-loglevel', 'error',
+      '-ss', String(startTime), '-i', info.videoUrl,
+      '-ss', String(startTime), '-i', info.audioUrl,
+      '-map', '0:v:0', '-map', '1:a:0',
+      '-c:v', 'copy', '-c:a', 'aac', '-b:a', '128k',
+      '-f', 'mp4',
+      '-movflags', 'frag_keyframe+empty_moov+default_base_moof',
+      'pipe:1',
+    ]);
+    res.setHeader('Content-Type', 'video/mp4');
+    ff.stdout.pipe(res);
+    ff.stderr.on('data', () => {});
+    ff.on('error', () => { if (!res.headersSent) res.status(500).end(); });
+    return ff;
+  } else {
+    const ytUrl = new URL(info.videoUrl);
+    const proxyReq = https.get({
+      hostname: ytUrl.hostname,
+      path: ytUrl.pathname + ytUrl.search,
+      headers: { 'User-Agent': 'Mozilla/5.0 Chrome/120' },
+    }, proxyRes => {
+      ['content-type', 'content-length', 'content-range', 'accept-ranges']
+        .forEach(h => { if (proxyRes.headers[h]) res.setHeader(h, proxyRes.headers[h]); });
+      res.status(proxyRes.statusCode);
+      proxyRes.pipe(res);
+    });
+    proxyReq.on('error', () => { if (!res.headersSent) res.status(502).end(); });
+    return proxyReq;
+  }
 }
 
 // ── Socket.io rooms ──────────────────────────────────────────────────────────
@@ -125,12 +170,13 @@ io.on('connection', (socket) => {
     socket.emit('status', { msg: 'Fetching video...', type: 'loading' });
 
     try {
-      const [meta, urls] = await Promise.all([
+      const [meta, defaultUrls] = await Promise.all([
         getVideoInfo(videoId),
-        getStreamUrls(videoId),
+        fetchStreamUrls(videoId, null),
       ]);
 
-      streams.set(videoId, { ...urls, title: meta.title, uploader: meta.uploader });
+      const qualities = extractQualities(meta);
+      streams.set(videoId, { title: meta.title, uploader: meta.uploader, duration: meta.duration, qualities });
 
       room.videoId = videoId;
       room.title = meta.title;
@@ -144,6 +190,7 @@ io.on('connection', (socket) => {
         title: room.title,
         uploader: room.uploader,
         duration: meta.duration,
+        qualities,
       });
     } catch (err) {
       socket.emit('status', { msg: `Error: ${err.message}`, type: 'error' });
@@ -153,16 +200,14 @@ io.on('connection', (socket) => {
   socket.on('play', ({ roomId, currentTime }) => {
     const room = rooms.get(roomId);
     if (!room) return;
-    room.playing = true;
-    room.currentTime = currentTime;
+    room.playing = true; room.currentTime = currentTime;
     socket.to(roomId).emit('play', { currentTime });
   });
 
   socket.on('pause', ({ roomId, currentTime }) => {
     const room = rooms.get(roomId);
     if (!room) return;
-    room.playing = false;
-    room.currentTime = currentTime;
+    room.playing = false; room.currentTime = currentTime;
     socket.to(roomId).emit('pause', { currentTime });
   });
 
@@ -189,50 +234,20 @@ app.use(express.json());
 app.use(express.static('public'));
 app.get('/health', (req, res) => res.send('ok'));
 
-app.get('/api/stream/:videoId', (req, res) => {
-  const info = streams.get(req.params.videoId);
+app.get('/api/stream/:videoId', async (req, res) => {
+  const { videoId } = req.params;
+  const info = streams.get(videoId);
   if (!info) return res.status(404).json({ error: 'Stream not found' });
 
   const startTime = Math.max(0, parseFloat(req.query.t) || 0);
+  const quality = req.query.quality ? parseInt(req.query.quality) : null;
 
-  if (info.audioUrl) {
-    // High quality: merge video+audio in real time with ffmpeg
-    const ff = spawn('ffmpeg', [
-      '-hide_banner', '-loglevel', 'error',
-      '-ss', String(startTime), '-i', info.videoUrl,
-      '-ss', String(startTime), '-i', info.audioUrl,
-      '-map', '0:v:0', '-map', '1:a:0',
-      '-c:v', 'copy', '-c:a', 'aac', '-b:a', '128k',
-      '-f', 'mp4',
-      '-movflags', 'frag_keyframe+empty_moov+default_base_moof',
-      'pipe:1',
-    ]);
-
-    res.setHeader('Content-Type', 'video/mp4');
-    ff.stdout.pipe(res);
-    ff.stderr.on('data', () => {});
-    ff.on('error', err => { if (!res.headersSent) res.status(500).end(); });
-    req.on('close', () => { try { ff.kill('SIGKILL'); } catch {} });
-  } else {
-    // Pre-muxed: proxy with range request support
-    const ytUrl = new URL(info.videoUrl);
-    const options = {
-      hostname: ytUrl.hostname,
-      path: ytUrl.pathname + ytUrl.search,
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36',
-        ...(req.headers.range ? { Range: req.headers.range } : {}),
-      },
-    };
-    const proxyReq = https.get(options, proxyRes => {
-      ['content-type', 'content-length', 'content-range', 'accept-ranges'].forEach(h => {
-        if (proxyRes.headers[h]) res.setHeader(h, proxyRes.headers[h]);
-      });
-      res.status(proxyRes.statusCode);
-      proxyRes.pipe(res);
-    });
-    proxyReq.on('error', err => { if (!res.headersSent) res.status(502).end(); });
-    req.on('close', () => proxyReq.destroy());
+  try {
+    const urls = await fetchStreamUrls(videoId, quality);
+    const proc = pipeStream(urls, startTime, res);
+    req.on('close', () => { try { proc.destroy?.() || proc.kill?.('SIGKILL'); } catch {} });
+  } catch (err) {
+    if (!res.headersSent) res.status(500).json({ error: err.message });
   }
 });
 
