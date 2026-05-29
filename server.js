@@ -32,7 +32,7 @@ function extractVideoId(input) {
   return urlMatch ? urlMatch[1] : input.trim();
 }
 
-// streams: videoId -> { url, title, uploader, fetchedAt }
+// streams: videoId -> { videoUrl, audioUrl?, title, uploader }
 const streams = new Map();
 // rooms: roomId -> { videoId, playing, currentTime, title, uploader }
 const rooms = new Map();
@@ -47,8 +47,7 @@ function getVideoInfo(videoId) {
       '--dump-json', '--no-playlist',
       `https://www.youtube.com/watch?v=${videoId}`,
     ]));
-    let out = '';
-    let err = '';
+    let out = '', err = '';
     ytdlp.stdout.on('data', d => out += d);
     ytdlp.stderr.on('data', d => err += d);
     ytdlp.on('close', code => {
@@ -59,23 +58,28 @@ function getVideoInfo(videoId) {
   });
 }
 
-// Get direct stream URL — picks best pre-muxed format so we get a single URL
-function getStreamUrl(videoId) {
+// Get best video+audio URLs. Returns { videoUrl, audioUrl? }
+// High quality: separate video+audio streams (720p+)
+// Fallback: single pre-muxed stream
+function getStreamUrls(videoId) {
   return new Promise((resolve, reject) => {
     const ytdlp = spawn('yt-dlp', ytdlpArgs([
       '-g',
-      '--format', 'best[height<=1080][ext=mp4]/best[height<=1080]/best[ext=mp4]/best',
+      '--format', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best[ext=mp4]/best',
       '--no-playlist',
       `https://www.youtube.com/watch?v=${videoId}`,
     ]));
-    let out = '';
-    let err = '';
+    let out = '', err = '';
     ytdlp.stdout.on('data', d => out += d);
     ytdlp.stderr.on('data', d => err += d);
     ytdlp.on('close', code => {
-      const url = out.trim().split('\n')[0]; // take first URL if multiple
-      if (code !== 0 || !url) return reject(new Error(err.trim() || 'Failed to get stream URL'));
-      resolve(url);
+      const lines = out.trim().split('\n').filter(Boolean);
+      if (code !== 0 || !lines.length) return reject(new Error(err.trim() || 'Failed to get stream URLs'));
+      if (lines.length >= 2) {
+        resolve({ videoUrl: lines[0], audioUrl: lines[1] });
+      } else {
+        resolve({ videoUrl: lines[0] });
+      }
     });
     ytdlp.on('error', reject);
   });
@@ -87,8 +91,8 @@ io.on('connection', (socket) => {
   let currentRoomId = null;
 
   function getMemberCount(roomId) {
-    const room = io.sockets.adapter.rooms.get(roomId);
-    return room ? room.size : 0;
+    const r = io.sockets.adapter.rooms.get(roomId);
+    return r ? r.size : 0;
   }
 
   function broadcastMemberCount(roomId) {
@@ -121,13 +125,12 @@ io.on('connection', (socket) => {
     socket.emit('status', { msg: 'Fetching video...', type: 'loading' });
 
     try {
-      // Run info + stream URL fetch in parallel
-      const [meta, streamUrl] = await Promise.all([
+      const [meta, urls] = await Promise.all([
         getVideoInfo(videoId),
-        getStreamUrl(videoId),
+        getStreamUrls(videoId),
       ]);
 
-      streams.set(videoId, { url: streamUrl, fetchedAt: Date.now() });
+      streams.set(videoId, { ...urls, title: meta.title, uploader: meta.uploader });
 
       room.videoId = videoId;
       room.title = meta.title;
@@ -185,33 +188,51 @@ app.use(express.json());
 app.use(express.static('public'));
 app.get('/health', (req, res) => res.send('ok'));
 
-// Proxy YouTube stream through our server with range request support
 app.get('/api/stream/:videoId', (req, res) => {
   const info = streams.get(req.params.videoId);
   if (!info) return res.status(404).json({ error: 'Stream not found' });
 
-  const ytUrl = new URL(info.url);
-  const options = {
-    hostname: ytUrl.hostname,
-    path: ytUrl.pathname + ytUrl.search,
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36',
-      ...(req.headers.range ? { Range: req.headers.range } : {}),
-    },
-  };
+  const startTime = Math.max(0, parseFloat(req.query.t) || 0);
 
-  const proxyReq = https.get(options, (proxyRes) => {
-    const forward = ['content-type', 'content-length', 'content-range', 'accept-ranges'];
-    forward.forEach(h => { if (proxyRes.headers[h]) res.setHeader(h, proxyRes.headers[h]); });
-    res.status(proxyRes.statusCode);
-    proxyRes.pipe(res);
-  });
+  if (info.audioUrl) {
+    // High quality: merge video+audio in real time with ffmpeg
+    const ff = spawn('ffmpeg', [
+      '-hide_banner', '-loglevel', 'error',
+      '-ss', String(startTime), '-i', info.videoUrl,
+      '-ss', String(startTime), '-i', info.audioUrl,
+      '-map', '0:v:0', '-map', '1:a:0',
+      '-c:v', 'copy', '-c:a', 'aac', '-b:a', '128k',
+      '-f', 'mp4',
+      '-movflags', 'frag_keyframe+empty_moov+default_base_moof',
+      'pipe:1',
+    ]);
 
-  proxyReq.on('error', (err) => {
-    if (!res.headersSent) res.status(502).json({ error: err.message });
-  });
-
-  req.on('close', () => proxyReq.destroy());
+    res.setHeader('Content-Type', 'video/mp4');
+    ff.stdout.pipe(res);
+    ff.stderr.on('data', () => {});
+    ff.on('error', err => { if (!res.headersSent) res.status(500).end(); });
+    req.on('close', () => { try { ff.kill('SIGKILL'); } catch {} });
+  } else {
+    // Pre-muxed: proxy with range request support
+    const ytUrl = new URL(info.videoUrl);
+    const options = {
+      hostname: ytUrl.hostname,
+      path: ytUrl.pathname + ytUrl.search,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36',
+        ...(req.headers.range ? { Range: req.headers.range } : {}),
+      },
+    };
+    const proxyReq = https.get(options, proxyRes => {
+      ['content-type', 'content-length', 'content-range', 'accept-ranges'].forEach(h => {
+        if (proxyRes.headers[h]) res.setHeader(h, proxyRes.headers[h]);
+      });
+      res.status(proxyRes.statusCode);
+      proxyRes.pipe(res);
+    });
+    proxyReq.on('error', err => { if (!res.headersSent) res.status(502).end(); });
+    req.on('close', () => proxyReq.destroy());
+  }
 });
 
 httpServer.listen(PORT, '0.0.0.0', () => console.log(`Shabang running at http://localhost:${PORT}`));

@@ -394,6 +394,7 @@
 
   let player = null;
   let currentRoomId = null;
+  let currentVideoId = null;
   let theatreMode = false;
   let isSyncing = false;
 
@@ -440,7 +441,18 @@
 
   // ── Video loading ────────────────────────────────────────────────────────
 
+  function reloadAt(t) {
+    if (!currentVideoId || !player) return;
+    const video = document.querySelector('#shabang-video');
+    if (!video) return;
+    const src = `/api/stream/${currentVideoId}?t=${Math.floor(t)}`;
+    video.src = src;
+    video.load();
+    if (!player.paused) video.play().catch(() => {});
+  }
+
   function loadPlayer(videoId, streamUrl, title, uploader, startTime = 0, playing = false) {
+    currentVideoId = videoId;
     if (title) {
       videoTitle.textContent = title;
       videoUploader.textContent = uploader;
@@ -455,7 +467,7 @@
     video.id = 'shabang-video';
     video.controls = true;
     const source = document.createElement('source');
-    source.src = streamUrl;
+    source.src = `${streamUrl}?t=${Math.floor(startTime)}`;
     source.type = 'video/mp4';
     video.appendChild(source);
     playerContainer.appendChild(video);
@@ -470,7 +482,6 @@
 
     player.on('ready', () => {
       injectPlayerControls();
-      if (startTime > 0) player.currentTime = startTime;
       if (playing) player.play();
 
       // Sync events — emit to room, guard against loops
@@ -484,7 +495,9 @@
       });
       player.on('seeked', () => {
         if (isSyncing) return;
-        socket.emit('seek', { roomId: currentRoomId, currentTime: player.currentTime });
+        const t = player.currentTime;
+        socket.emit('seek', { roomId: currentRoomId, currentTime: t });
+        reloadAt(t);
       });
     });
 
@@ -544,7 +557,7 @@
   socket.on('seek', ({ currentTime }) => {
     if (!player) return;
     isSyncing = true;
-    player.currentTime = currentTime;
+    reloadAt(currentTime);
     setTimeout(() => { isSyncing = false; }, 300);
   });
 
