@@ -56,6 +56,7 @@ function startDownload(videoId) {
     const ytdlp = spawn('yt-dlp', [
       '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
       '--merge-output-format', 'mp4',
+      '--extractor-args', 'youtube:player_client=tv_embedded',
       '-o', filePath,
       '--no-playlist',
       `https://www.youtube.com/watch?v=${videoId}`,
@@ -132,7 +133,11 @@ io.on('connection', (socket) => {
     try {
       // Get metadata
       const meta = await new Promise((resolve, reject) => {
-        const ytdlp = spawn('yt-dlp', ['--dump-json', '--no-playlist', `https://www.youtube.com/watch?v=${videoId}`]);
+        const ytdlp = spawn('yt-dlp', [
+          '--dump-json', '--no-playlist',
+          '--extractor-args', 'youtube:player_client=tv_embedded',
+          `https://www.youtube.com/watch?v=${videoId}`,
+        ]);
         let out = '';
         ytdlp.stdout.on('data', d => out += d);
         ytdlp.on('close', code => {
