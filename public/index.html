@@ -36,7 +36,7 @@
 
     /* ── Nav ── */
     nav {
-      display: flex;
+      display: none;
       align-items: center;
       justify-content: center;
       padding: 0 40px;
@@ -331,7 +331,7 @@
 <div id="lobby">
   <div class="lobby-logo">shabang</div>
   <div class="lobby-actions">
-    <button id="create-room-btn">Create room</button>
+    <button id="create-room-btn">Create a room</button>
   </div>
 </div>
 
@@ -340,7 +340,6 @@
   <div class="page">
     <div class="room-bar">
       <div class="members-badge">
-        <div class="members-dot"></div>
         <span id="member-count">1</span> watching
       </div>
       <button id="copy-link-btn">
@@ -399,6 +398,7 @@
     currentRoomId = roomId;
     history.replaceState(null, '', `?room=${roomId}`);
     lobby.style.display = 'none';
+    document.querySelector('nav').style.display = 'flex';
     roomEl.style.display = 'block';
   }
 
