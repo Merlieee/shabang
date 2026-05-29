@@ -22,7 +22,7 @@ if (process.env.YT_COOKIES) {
 }
 
 function ytdlpArgs(extra = []) {
-  const args = [...extra];
+  const args = ['--js-runtimes', 'node', ...extra];
   if (fs.existsSync(COOKIES_FILE)) args.unshift('--cookies', COOKIES_FILE);
   return args;
 }
