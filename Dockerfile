@@ -13,5 +13,4 @@ COPY . .
 
 RUN mkdir -p tmp
 
-EXPOSE 3001
 CMD ["node", "server.js"]
