@@ -56,13 +56,176 @@
       letter-spacing: -0.3px;
     }
 
-    /* ── Page ── */
+    /* ── Lobby (no room) ── */
+    #lobby {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: calc(100vh - var(--nav-h));
+      gap: 12px;
+      padding: 24px;
+    }
+
+    #lobby h2 {
+      font-size: 1.4rem;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+      margin-bottom: 4px;
+    }
+
+    #lobby p {
+      font-size: 0.88rem;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    .lobby-actions {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    #create-room-btn {
+      height: 42px;
+      padding: 0 22px;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    #create-room-btn:hover { background: var(--accent-hover); }
+
+    .lobby-divider {
+      font-size: 0.8rem;
+      color: var(--muted-light);
+    }
+
+    .join-form {
+      display: flex;
+      gap: 8px;
+    }
+
+    #join-input {
+      height: 42px;
+      width: 130px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--surface);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 0.88rem;
+      font-weight: 600;
+      padding: 0 14px;
+      outline: none;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      transition: border-color 0.15s;
+    }
+
+    #join-input:focus { border-color: var(--accent); }
+    #join-input::placeholder { color: var(--muted-light); text-transform: none; letter-spacing: 0; font-weight: 400; }
+
+    #join-room-btn {
+      height: 42px;
+      padding: 0 18px;
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 0.88rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: border-color 0.15s;
+    }
+
+    #join-room-btn:hover { border-color: var(--accent); }
+
+    /* ── Room ── */
+    #room { display: none; }
+
     .page {
       max-width: 1100px;
       margin: 0 auto;
-      padding: 56px 24px 80px;
+      padding: 32px 24px 80px;
       transition: max-width 0.35s ease, padding 0.35s ease;
     }
+
+    /* ── Room bar ── */
+    .room-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+
+    .room-info {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .room-id {
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: var(--muted);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .room-id span {
+      color: var(--text);
+    }
+
+    .members-badge {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--muted);
+    }
+
+    .members-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #22c55e;
+      animation: blink 2s infinite;
+    }
+
+    .room-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    #copy-link-btn {
+      height: 32px;
+      padding: 0 14px;
+      background: var(--surface);
+      color: var(--muted);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-family: inherit;
+      font-size: 0.75rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: color 0.15s, border-color 0.15s;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    #copy-link-btn:hover { color: var(--text); border-color: var(--muted); }
+    #copy-link-btn.copied { color: #22c55e; border-color: #22c55e; }
 
     /* ── Clipboard CTA ── */
     .input-row {
@@ -86,7 +249,6 @@
       display: flex;
       align-items: center;
       gap: 7px;
-      white-space: nowrap;
     }
 
     #play-btn:hover { opacity: 0.85; }
@@ -126,6 +288,7 @@
       padding: 40px 0;
     }
 
+    body.theatre .room-bar,
     body.theatre .input-row,
     body.theatre #video-meta,
     body.theatre #status {
@@ -139,9 +302,7 @@
     }
 
     body.theatre #player-container .plyr,
-    body.theatre #player-container .plyr--video {
-      height: 100%;
-    }
+    body.theatre #player-container .plyr--video { height: 100%; }
 
     body.theatre #player-container video {
       height: 100%;
@@ -206,14 +367,8 @@
       background: linear-gradient(transparent, rgba(0,0,0,0.65));
     }
 
-    .plyr__control--overlaid {
-      background: var(--accent) !important;
-    }
-
-    .plyr__control--overlaid:hover {
-      background: var(--accent-hover) !important;
-      transform: scale(1.06);
-    }
+    .plyr__control--overlaid { background: var(--accent) !important; }
+    .plyr__control--overlaid:hover { background: var(--accent-hover) !important; transform: scale(1.06); }
 
     /* Theatre button inside Plyr bar */
     .plyr__theatre-btn {
@@ -231,11 +386,7 @@
       overflow: hidden;
     }
 
-    .plyr__theatre-btn:hover {
-      color: #fff;
-      gap: 6px;
-    }
-
+    .plyr__theatre-btn:hover { color: #fff; gap: 6px; }
     .plyr__theatre-btn.active { color: var(--accent); }
 
     .plyr__theatre-label {
@@ -249,10 +400,7 @@
       overflow: hidden;
     }
 
-    .plyr__theatre-btn:hover .plyr__theatre-label {
-      max-width: 100px;
-      opacity: 1;
-    }
+    .plyr__theatre-btn:hover .plyr__theatre-label { max-width: 100px; opacity: 1; }
   </style>
 </head>
 <body>
@@ -261,29 +409,76 @@
   <div class="nav-logo">shabang</div>
 </nav>
 
-<div class="page">
-  <div class="input-row">
-    <button id="play-btn">
-      <svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="M3 2.5h6.5a.5.5 0 0 1 .5.5v1h1V3a1.5 1.5 0 0 0-1.5-1.5H3A1.5 1.5 0 0 0 1.5 3v7A1.5 1.5 0 0 0 3 11.5h1v-1H3a.5.5 0 0 1-.5-.5V3a.5.5 0 0 1 .5-.5z" fill="currentColor"/>
-        <rect x="4.5" y="4.5" width="9" height="9" rx="1" stroke="currentColor" stroke-width="1.1" fill="none"/>
-      </svg>
-      Play from clipboard
-    </button>
+<!-- Lobby -->
+<div id="lobby">
+  <h2>Watch together.</h2>
+  <p>Create a room and share the link — everyone stays in sync.</p>
+  <div class="lobby-actions">
+    <button id="create-room-btn">Create room</button>
+    <span class="lobby-divider">or</span>
+    <div class="join-form">
+      <input id="join-input" type="text" placeholder="Room code" maxlength="6" autocomplete="off" spellcheck="false" />
+      <button id="join-room-btn">Join</button>
+    </div>
   </div>
-
-  <div id="player-container" class="empty"></div>
-
-  <div id="video-meta" style="display:none">
-    <div id="video-title"></div>
-    <div id="video-uploader"></div>
-  </div>
-
-  <div id="status"></div>
 </div>
 
+<!-- Room -->
+<div id="room">
+  <div class="page">
+    <div class="room-bar">
+      <div class="room-info">
+        <div class="room-id">Room <span id="room-id-display"></span></div>
+        <div class="members-badge">
+          <div class="members-dot"></div>
+          <span id="member-count">1</span> watching
+        </div>
+      </div>
+      <div class="room-actions">
+        <button id="copy-link-btn">
+          <svg width="12" height="12" viewBox="0 0 15 15" fill="none">
+            <path d="M3 2.5h6.5a.5.5 0 0 1 .5.5v1h1V3a1.5 1.5 0 0 0-1.5-1.5H3A1.5 1.5 0 0 0 1.5 3v7A1.5 1.5 0 0 0 3 11.5h1v-1H3a.5.5 0 0 1-.5-.5V3a.5.5 0 0 1 .5-.5z" fill="currentColor"/>
+            <rect x="4.5" y="4.5" width="9" height="9" rx="1" stroke="currentColor" stroke-width="1.1" fill="none"/>
+          </svg>
+          Copy invite link
+        </button>
+      </div>
+    </div>
+
+    <div class="input-row">
+      <button id="play-btn">
+        <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+          <path d="M3 2.5h6.5a.5.5 0 0 1 .5.5v1h1V3a1.5 1.5 0 0 0-1.5-1.5H3A1.5 1.5 0 0 0 1.5 3v7A1.5 1.5 0 0 0 3 11.5h1v-1H3a.5.5 0 0 1-.5-.5V3a.5.5 0 0 1 .5-.5z" fill="currentColor"/>
+          <rect x="4.5" y="4.5" width="9" height="9" rx="1" stroke="currentColor" stroke-width="1.1" fill="none"/>
+        </svg>
+        Play from clipboard
+      </button>
+    </div>
+
+    <div id="player-container" class="empty"></div>
+
+    <div id="video-meta" style="display:none">
+      <div id="video-title"></div>
+      <div id="video-uploader"></div>
+    </div>
+
+    <div id="status"></div>
+  </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
 <script src="https://cdn.plyr.io/3.7.8/plyr.polyfilled.js"></script>
 <script>
+  const socket = io();
+
+  const lobby = document.getElementById('lobby');
+  const roomEl = document.getElementById('room');
+  const createRoomBtn = document.getElementById('create-room-btn');
+  const joinInput = document.getElementById('join-input');
+  const joinRoomBtn = document.getElementById('join-room-btn');
+  const roomIdDisplay = document.getElementById('room-id-display');
+  const memberCountEl = document.getElementById('member-count');
+  const copyLinkBtn = document.getElementById('copy-link-btn');
   const playBtn = document.getElementById('play-btn');
   const playerContainer = document.getElementById('player-container');
   const statusBar = document.getElementById('status');
@@ -292,53 +487,170 @@
   const videoUploader = document.getElementById('video-uploader');
 
   let player = null;
-  let sessionId = localStorage.getItem('shabang_session') || null;
+  let currentRoomId = null;
   let progressInterval = null;
-  let currentVideoId = null;
   let theatreMode = false;
+  let isSyncing = false;
 
-  function toggleTheatre() {
-    theatreMode = !theatreMode;
-    document.body.classList.toggle('theatre', theatreMode);
-    const btn = document.querySelector('.plyr__theatre-btn');
-    if (btn) btn.classList.toggle('active', theatreMode);
+  // ── Room setup ───────────────────────────────────────────────────────────
+
+  function enterRoom(roomId) {
+    currentRoomId = roomId;
+    roomIdDisplay.textContent = roomId;
+    history.replaceState(null, '', `?room=${roomId}`);
+    lobby.style.display = 'none';
+    roomEl.style.display = 'block';
   }
 
-  function injectPlayerControls() {
-    const c = player.elements.container;
+  createRoomBtn.addEventListener('click', () => {
+    socket.emit('create-room', ({ roomId }) => enterRoom(roomId));
+  });
 
-    // Custom skip icons
-    const rewindBtn = c.querySelector('button[data-plyr="rewind"]');
-    const ffBtn = c.querySelector('button[data-plyr="fast-forward"]');
-    if (rewindBtn) rewindBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20" aria-hidden="true">
-      <path d="M12 5V2L7.5 6 12 10V7a5 5 0 1 1-4.9 5.95l-1.97-.4A7 7 0 1 0 12 5z"/>
-      <text x="12.2" y="15" text-anchor="middle" font-size="5.2" font-weight="700" font-family="sans-serif">5</text>
-    </svg>`;
-    if (ffBtn) ffBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20" aria-hidden="true">
-      <path d="M12 5V2l4.5 4L12 10V7a5 5 0 1 0 4.9 5.95l1.97-.4A7 7 0 1 1 12 5z"/>
-      <text x="11.8" y="15" text-anchor="middle" font-size="5.2" font-weight="700" font-family="sans-serif">5</text>
-    </svg>`;
+  joinRoomBtn.addEventListener('click', joinRoom);
+  joinInput.addEventListener('keydown', e => { if (e.key === 'Enter') joinRoom(); });
 
-    // Theatre button — insert before fullscreen in the controls bar
-    const controls = c.querySelector('.plyr__controls');
-    const fullscreenBtn = c.querySelector('button[data-plyr="fullscreen"]');
-    if (controls && fullscreenBtn) {
-      const theatreBtn = document.createElement('button');
-      theatreBtn.className = 'plyr__theatre-btn' + (theatreMode ? ' active' : '');
-      theatreBtn.title = 'Theatre mode';
-      theatreBtn.innerHTML = `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-        <rect x="1.5" y="4.5" width="17" height="11" rx="1.5" stroke="currentColor" stroke-width="1.5"/>
-        <path d="M6 10h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-      </svg><span class="plyr__theatre-label">Theatre mode</span>`;
-      theatreBtn.addEventListener('click', toggleTheatre);
-      controls.insertBefore(theatreBtn, fullscreenBtn);
+  function joinRoom() {
+    const code = joinInput.value.trim().toUpperCase();
+    if (!code) return;
+    socket.emit('join-room', code, ({ error, room }) => {
+      if (error) return setStatus('Room not found', 'error');
+      enterRoom(code);
+      if (room.videoId) {
+        loadPlayer(room.videoId, `/api/stream/${room.videoId}`, room.title, room.uploader, room.currentTime, room.playing);
+      }
+    });
+  }
+
+  // Auto-join from URL
+  const urlRoom = new URLSearchParams(location.search).get('room');
+  if (urlRoom) {
+    joinInput.value = urlRoom;
+    socket.on('connect', () => joinRoom());
+  }
+
+  copyLinkBtn.addEventListener('click', () => {
+    navigator.clipboard.writeText(location.href).then(() => {
+      copyLinkBtn.classList.add('copied');
+      copyLinkBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg> Copied!`;
+      setTimeout(() => {
+        copyLinkBtn.classList.remove('copied');
+        copyLinkBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 15 15" fill="none"><path d="M3 2.5h6.5a.5.5 0 0 1 .5.5v1h1V3a1.5 1.5 0 0 0-1.5-1.5H3A1.5 1.5 0 0 0 1.5 3v7A1.5 1.5 0 0 0 3 11.5h1v-1H3a.5.5 0 0 1-.5-.5V3a.5.5 0 0 1 .5-.5z" fill="currentColor"/><rect x="4.5" y="4.5" width="9" height="9" rx="1" stroke="currentColor" stroke-width="1.1" fill="none"/></svg> Copy invite link`;
+      }, 2000);
+    });
+  });
+
+  // ── Video loading ────────────────────────────────────────────────────────
+
+  function loadPlayer(videoId, streamUrl, title, uploader, startTime = 0, playing = false) {
+    if (title) {
+      videoTitle.textContent = title;
+      videoUploader.textContent = uploader;
+      videoMeta.style.display = 'block';
+    }
+
+    if (player) { player.destroy(); player = null; }
+
+    playerContainer.classList.remove('empty');
+    playerContainer.innerHTML = '';
+    const video = document.createElement('video');
+    video.id = 'shabang-video';
+    video.controls = true;
+    const source = document.createElement('source');
+    source.src = streamUrl;
+    source.type = 'video/mp4';
+    video.appendChild(source);
+    playerContainer.appendChild(video);
+
+    player = new Plyr('#shabang-video', {
+      controls: ['play-large', 'play', 'rewind', 'fast-forward', 'progress',
+                 'current-time', 'duration', 'mute', 'volume', 'settings', 'fullscreen'],
+      settings: ['quality', 'speed'],
+      speed: { selected: 1, options: [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2] },
+      seekTime: 5,
+    });
+
+    player.on('ready', () => {
+      injectPlayerControls();
+      if (startTime > 0) player.currentTime = startTime;
+      if (playing) player.play();
+
+      // Sync events — emit to room, guard against loops
+      player.on('play', () => {
+        if (isSyncing) return;
+        socket.emit('play', { roomId: currentRoomId, currentTime: player.currentTime });
+      });
+      player.on('pause', () => {
+        if (isSyncing) return;
+        socket.emit('pause', { roomId: currentRoomId, currentTime: player.currentTime });
+      });
+      player.on('seeked', () => {
+        if (isSyncing) return;
+        socket.emit('seek', { roomId: currentRoomId, currentTime: player.currentTime });
+      });
+    });
+
+    trackProgress(videoId);
+  }
+
+  // ── Play from clipboard ──────────────────────────────────────────────────
+
+  async function playFromClipboard() {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (!text.trim()) return setStatus('Clipboard is empty', 'error');
+      playBtn.disabled = true;
+      socket.emit('load-video', { roomId: currentRoomId, url: text.trim() });
+    } catch {
+      setStatus('Clipboard access denied — check browser permissions', 'error');
     }
   }
 
-  function setStatus(msg, type = '') {
-    statusBar.textContent = msg;
-    statusBar.className = 'status-bar ' + type;
-  }
+  playBtn.addEventListener('click', playFromClipboard);
+
+  document.addEventListener('paste', (e) => {
+    if (!currentRoomId) return;
+    const text = (e.clipboardData || window.clipboardData).getData('text');
+    if (text.trim()) {
+      playBtn.disabled = true;
+      socket.emit('load-video', { roomId: currentRoomId, url: text.trim() });
+    }
+  });
+
+  // ── Socket events ────────────────────────────────────────────────────────
+
+  socket.on('member-count', count => { memberCountEl.textContent = count; });
+
+  socket.on('video-loaded', ({ videoId, streamUrl, title, uploader }) => {
+    playBtn.disabled = false;
+    setStatus('');
+    loadPlayer(videoId, streamUrl, title, uploader, 0, true);
+  });
+
+  socket.on('status', ({ msg, type }) => setStatus(msg, type));
+
+  socket.on('play', ({ currentTime }) => {
+    if (!player) return;
+    isSyncing = true;
+    player.currentTime = currentTime;
+    player.play().finally(() => { isSyncing = false; });
+  });
+
+  socket.on('pause', ({ currentTime }) => {
+    if (!player) return;
+    isSyncing = true;
+    player.currentTime = currentTime;
+    player.pause();
+    isSyncing = false;
+  });
+
+  socket.on('seek', ({ currentTime }) => {
+    if (!player) return;
+    isSyncing = true;
+    player.currentTime = currentTime;
+    setTimeout(() => { isSyncing = false; }, 300);
+  });
+
+  // ── Progress tracking ────────────────────────────────────────────────────
 
   function formatBytes(bytes) {
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
@@ -368,85 +680,48 @@
     }, 1500);
   }
 
-  async function playVideo(url) {
-    if (!url.trim()) return;
-    playBtn.disabled = true;
-    setStatus('Fetching video info...', 'loading');
-    videoMeta.style.display = 'none';
-
-    try {
-      const infoRes = await fetch(`/api/info?url=${encodeURIComponent(url)}`);
-      const info = await infoRes.json();
-      if (info.error) throw new Error(info.error);
-
-      videoTitle.textContent = info.title;
-      videoUploader.textContent = info.uploader;
-      videoMeta.style.display = 'block';
-
-      setStatus('Starting download...', 'loading');
-
-      const playRes = await fetch('/api/play', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url, sessionId }),
-      });
-      const playData = await playRes.json();
-      if (playData.error) throw new Error(playData.error);
-
-      sessionId = playData.sessionId;
-      localStorage.setItem('shabang_session', sessionId);
-      currentVideoId = playData.videoId;
-
-      if (player) { player.destroy(); player = null; }
-
-      playerContainer.classList.remove('empty');
-      playerContainer.innerHTML = '';
-      const video = document.createElement('video');
-      video.id = 'shabang-video';
-      video.controls = true;
-      video.autoplay = true;
-      const source = document.createElement('source');
-      source.src = playData.streamUrl;
-      source.type = 'video/mp4';
-      video.appendChild(source);
-      playerContainer.appendChild(video);
-
-      player = new Plyr('#shabang-video', {
-        controls: ['play-large', 'play', 'rewind', 'fast-forward', 'progress',
-                   'current-time', 'duration', 'mute', 'volume', 'settings',
-                   'fullscreen'],
-        settings: ['quality', 'speed'],
-        speed: { selected: 1, options: [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2] },
-        seekTime: 5,
-      });
-
-      player.on('ready', injectPlayerControls);
-
-      trackProgress(playData.videoId);
-
-    } catch (err) {
-      setStatus(`Error: ${err.message}`, 'error');
-    } finally {
-      playBtn.disabled = false;
-    }
+  function setStatus(msg, type = '') {
+    statusBar.textContent = msg;
+    statusBar.className = type;
   }
 
-  async function playFromClipboard() {
-    try {
-      const text = await navigator.clipboard.readText();
-      if (!text.trim()) return setStatus('Clipboard is empty', 'error');
-      playVideo(text.trim());
-    } catch {
-      setStatus('Clipboard access denied — check browser permissions', 'error');
-    }
+  // ── Theatre & player controls ────────────────────────────────────────────
+
+  function toggleTheatre() {
+    theatreMode = !theatreMode;
+    document.body.classList.toggle('theatre', theatreMode);
+    const btn = document.querySelector('.plyr__theatre-btn');
+    if (btn) btn.classList.toggle('active', theatreMode);
   }
 
-  playBtn.addEventListener('click', playFromClipboard);
+  function injectPlayerControls() {
+    const c = player.elements.container;
 
-  document.addEventListener('paste', (e) => {
-    const text = (e.clipboardData || window.clipboardData).getData('text');
-    if (text.trim()) playVideo(text.trim());
-  });
+    const rewindBtn = c.querySelector('button[data-plyr="rewind"]');
+    const ffBtn = c.querySelector('button[data-plyr="fast-forward"]');
+    if (rewindBtn) rewindBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20" aria-hidden="true">
+      <path d="M12 5V2L7.5 6 12 10V7a5 5 0 1 1-4.9 5.95l-1.97-.4A7 7 0 1 0 12 5z"/>
+      <text x="12.2" y="15" text-anchor="middle" font-size="5.2" font-weight="700" font-family="sans-serif">5</text>
+    </svg>`;
+    if (ffBtn) ffBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20" aria-hidden="true">
+      <path d="M12 5V2l4.5 4L12 10V7a5 5 0 1 0 4.9 5.95l1.97-.4A7 7 0 1 1 12 5z"/>
+      <text x="11.8" y="15" text-anchor="middle" font-size="5.2" font-weight="700" font-family="sans-serif">5</text>
+    </svg>`;
+
+    const controls = c.querySelector('.plyr__controls');
+    const fullscreenBtn = c.querySelector('button[data-plyr="fullscreen"]');
+    if (controls && fullscreenBtn) {
+      const theatreBtn = document.createElement('button');
+      theatreBtn.className = 'plyr__theatre-btn' + (theatreMode ? ' active' : '');
+      theatreBtn.title = 'Theatre mode';
+      theatreBtn.innerHTML = `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+        <rect x="1.5" y="4.5" width="17" height="11" rx="1.5" stroke="currentColor" stroke-width="1.5"/>
+        <path d="M6 10h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+      </svg><span class="plyr__theatre-label">Theatre mode</span>`;
+      theatreBtn.addEventListener('click', toggleTheatre);
+      controls.insertBefore(theatreBtn, fullscreenBtn);
+    }
+  }
 </script>
 </body>
 </html>

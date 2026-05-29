@@ -1,11 +1,15 @@
 const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
 const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-const crypto = require('crypto');
 
 const app = express();
-const PORT = 3001;
+const httpServer = http.createServer(app);
+const io = new Server(httpServer);
+
+const PORT = process.env.PORT || 3001;
 const TMP_DIR = path.join(__dirname, 'tmp');
 
 if (!fs.existsSync(TMP_DIR)) fs.mkdirSync(TMP_DIR);
@@ -13,10 +17,14 @@ if (!fs.existsSync(TMP_DIR)) fs.mkdirSync(TMP_DIR);
 app.use(express.json());
 app.use(express.static('public'));
 
-// Track active downloads: videoId -> { filePath, process, ready, size }
+// downloads: videoId -> { filePath, process, ready, size, error }
 const downloads = new Map();
-// Track current video per session: sessionId -> videoId
-const sessions = new Map();
+// rooms: roomId -> { videoId, streamUrl, playing, currentTime, title, uploader }
+const rooms = new Map();
+
+function generateRoomId() {
+  return Math.random().toString(36).substring(2, 8).toUpperCase();
+}
 
 function getTmpPath(videoId) {
   return path.join(TMP_DIR, `${videoId}.mp4`);
@@ -25,47 +33,35 @@ function getTmpPath(videoId) {
 function cleanupVideo(videoId) {
   const info = downloads.get(videoId);
   if (!info) return;
-  if (info.process) {
-    try { info.process.kill(); } catch {}
-  }
-  try {
-    if (fs.existsSync(info.filePath)) fs.unlinkSync(info.filePath);
-  } catch {}
+  if (info.process) { try { info.process.kill(); } catch {} }
+  try { if (fs.existsSync(info.filePath)) fs.unlinkSync(info.filePath); } catch {}
   downloads.delete(videoId);
 }
 
-// Extract video ID from URL or return as-is if already an ID
 function extractVideoId(input) {
   const urlMatch = input.match(/(?:v=|youtu\.be\/|embed\/)([a-zA-Z0-9_-]{11})/);
   return urlMatch ? urlMatch[1] : input.trim();
 }
 
-// Start downloading a video, resolve when file starts being written
 function startDownload(videoId) {
   return new Promise((resolve, reject) => {
     const filePath = getTmpPath(videoId);
-
-    if (downloads.has(videoId)) {
-      return resolve(downloads.get(videoId));
-    }
+    if (downloads.has(videoId)) return resolve(downloads.get(videoId));
 
     const info = { filePath, process: null, ready: false, size: 0, error: null };
     downloads.set(videoId, info);
 
-    const url = `https://www.youtube.com/watch?v=${videoId}`;
     const ytdlp = spawn('yt-dlp', [
       '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
       '--merge-output-format', 'mp4',
       '-o', filePath,
       '--no-playlist',
-      url,
+      `https://www.youtube.com/watch?v=${videoId}`,
     ]);
 
     info.process = ytdlp;
 
-    ytdlp.stderr.on('data', (data) => {
-      const text = data.toString();
-      // Resolve as soon as yt-dlp starts writing the file
+    ytdlp.stderr.on('data', () => {
       if (!info.ready && fs.existsSync(filePath)) {
         info.ready = true;
         resolve(info);
@@ -76,138 +72,139 @@ function startDownload(videoId) {
       info.process = null;
       if (code === 0) {
         info.ready = true;
-        info.size = fs.existsSync(filePath) ? fs.statSync(filePath).size : 0;
-        if (!info.ready) resolve(info);
-      } else if (code !== null) {
-        info.error = `yt-dlp exited with code ${code}`;
-        if (!info.ready) reject(new Error(info.error));
-      }
-    });
-
-    ytdlp.on('error', (err) => {
-      info.error = err.message;
-      reject(err);
-    });
-
-    // Also resolve after a short wait if file exists (handles fast starts)
-    setTimeout(() => {
-      if (!info.ready && fs.existsSync(filePath)) {
-        info.ready = true;
+        if (fs.existsSync(filePath)) info.size = fs.statSync(filePath).size;
         resolve(info);
+      } else if (code !== null && !info.ready) {
+        info.error = `yt-dlp exited with code ${code}`;
+        reject(new Error(info.error));
       }
+    });
+
+    ytdlp.on('error', (err) => { info.error = err.message; reject(err); });
+
+    setTimeout(() => {
+      if (!info.ready && fs.existsSync(filePath)) { info.ready = true; resolve(info); }
     }, 2000);
   });
 }
 
-// Get video metadata without downloading
-app.get('/api/info', async (req, res) => {
-  const { url } = req.query;
-  if (!url) return res.status(400).json({ error: 'url required' });
+// ── Socket.io rooms ──────────────────────────────────────────────────────────
 
-  const videoId = extractVideoId(url);
+io.on('connection', (socket) => {
+  let currentRoomId = null;
 
-  const ytdlp = spawn('yt-dlp', [
-    '--dump-json',
-    '--no-playlist',
-    `https://www.youtube.com/watch?v=${videoId}`,
-  ]);
+  function getMemberCount(roomId) {
+    const room = io.sockets.adapter.rooms.get(roomId);
+    return room ? room.size : 0;
+  }
 
-  let output = '';
-  ytdlp.stdout.on('data', (d) => (output += d));
-  ytdlp.on('close', (code) => {
-    if (code !== 0) return res.status(500).json({ error: 'Failed to fetch video info' });
+  function broadcastMemberCount(roomId) {
+    io.to(roomId).emit('member-count', getMemberCount(roomId));
+  }
+
+  socket.on('create-room', (callback) => {
+    const roomId = generateRoomId();
+    rooms.set(roomId, { videoId: null, streamUrl: null, playing: false, currentTime: 0, title: null, uploader: null });
+    socket.join(roomId);
+    currentRoomId = roomId;
+    broadcastMemberCount(roomId);
+    callback({ roomId });
+  });
+
+  socket.on('join-room', (roomId, callback) => {
+    const room = rooms.get(roomId);
+    if (!room) return callback({ error: 'Room not found' });
+    socket.join(roomId);
+    currentRoomId = roomId;
+    broadcastMemberCount(roomId);
+    callback({ room });
+  });
+
+  socket.on('load-video', async ({ roomId, url }) => {
+    const room = rooms.get(roomId);
+    if (!room) return;
+
+    const videoId = extractVideoId(url);
+    socket.emit('status', { msg: 'Fetching video info...', type: 'loading' });
+
     try {
-      const info = JSON.parse(output);
-      res.json({
-        id: info.id,
-        title: info.title,
-        duration: info.duration,
-        thumbnail: info.thumbnail,
-        uploader: info.uploader,
+      // Get metadata
+      const meta = await new Promise((resolve, reject) => {
+        const ytdlp = spawn('yt-dlp', ['--dump-json', '--no-playlist', `https://www.youtube.com/watch?v=${videoId}`]);
+        let out = '';
+        ytdlp.stdout.on('data', d => out += d);
+        ytdlp.on('close', code => {
+          if (code !== 0) return reject(new Error('Failed to fetch video info'));
+          try { resolve(JSON.parse(out)); } catch { reject(new Error('Failed to parse video info')); }
+        });
+        ytdlp.on('error', reject);
       });
-    } catch {
-      res.status(500).json({ error: 'Failed to parse video info' });
+
+      room.videoId = videoId;
+      room.title = meta.title;
+      room.uploader = meta.uploader;
+      room.currentTime = 0;
+      room.playing = false;
+
+      socket.emit('status', { msg: 'Starting download...', type: 'loading' });
+      await startDownload(videoId);
+
+      room.streamUrl = `/api/stream/${videoId}`;
+      io.to(roomId).emit('video-loaded', {
+        videoId,
+        streamUrl: room.streamUrl,
+        title: room.title,
+        uploader: room.uploader,
+      });
+    } catch (err) {
+      socket.emit('status', { msg: `Error: ${err.message}`, type: 'error' });
     }
+  });
+
+  socket.on('play', ({ roomId, currentTime }) => {
+    const room = rooms.get(roomId);
+    if (!room) return;
+    room.playing = true;
+    room.currentTime = currentTime;
+    socket.to(roomId).emit('play', { currentTime });
+  });
+
+  socket.on('pause', ({ roomId, currentTime }) => {
+    const room = rooms.get(roomId);
+    if (!room) return;
+    room.playing = false;
+    room.currentTime = currentTime;
+    socket.to(roomId).emit('pause', { currentTime });
+  });
+
+  socket.on('seek', ({ roomId, currentTime }) => {
+    const room = rooms.get(roomId);
+    if (!room) return;
+    room.currentTime = currentTime;
+    socket.to(roomId).emit('seek', { currentTime });
+  });
+
+  socket.on('disconnect', () => {
+    if (!currentRoomId) return;
+    setTimeout(() => {
+      const count = getMemberCount(currentRoomId);
+      if (count === 0) {
+        const room = rooms.get(currentRoomId);
+        if (room?.videoId) cleanupVideo(room.videoId);
+        rooms.delete(currentRoomId);
+      } else {
+        broadcastMemberCount(currentRoomId);
+      }
+    }, 500);
   });
 });
 
-// Start playing a video for a session
-app.post('/api/play', async (req, res) => {
-  const { url, sessionId } = req.body;
-  if (!url) return res.status(400).json({ error: 'url required' });
+// ── REST API ─────────────────────────────────────────────────────────────────
 
-  const videoId = extractVideoId(url);
-  const sid = sessionId || crypto.randomUUID();
-
-  // Clean up previous video for this session
-  const prevVideoId = sessions.get(sid);
-  if (prevVideoId && prevVideoId !== videoId) {
-    // Check if any other session is using this video before deleting
-    const otherSession = [...sessions.values()].find(
-      (v, i) => v === prevVideoId && [...sessions.keys()][i] !== sid
-    );
-    if (!otherSession) cleanupVideo(prevVideoId);
-  }
-
-  sessions.set(sid, videoId);
-
-  try {
-    await startDownload(videoId);
-    res.json({ videoId, sessionId: sid, streamUrl: `/api/stream/${videoId}` });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Stream video with range request support
-app.get('/api/stream/:videoId', (req, res) => {
-  const { videoId } = req.params;
-  const info = downloads.get(videoId);
-
-  if (!info || !fs.existsSync(info.filePath)) {
-    return res.status(404).json({ error: 'Video not found or not yet downloaded' });
-  }
-
-  const filePath = info.filePath;
-  const stat = fs.statSync(filePath);
-  const fileSize = stat.size;
-  const range = req.headers.range;
-
-  if (range) {
-    const parts = range.replace(/bytes=/, '').split('-');
-    const start = parseInt(parts[0], 10);
-    const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
-    const chunkSize = end - start + 1;
-
-    res.writeHead(206, {
-      'Content-Range': `bytes ${start}-${end}/${fileSize}`,
-      'Accept-Ranges': 'bytes',
-      'Content-Length': chunkSize,
-      'Content-Type': 'video/mp4',
-    });
-
-    fs.createReadStream(filePath, { start, end }).pipe(res);
-  } else {
-    res.writeHead(200, {
-      'Content-Length': fileSize,
-      'Content-Type': 'video/mp4',
-      'Accept-Ranges': 'bytes',
-    });
-    fs.createReadStream(filePath).pipe(res);
-  }
-});
-
-// Get download progress
 app.get('/api/progress/:videoId', (req, res) => {
-  const { videoId } = req.params;
-  const info = downloads.get(videoId);
-
+  const info = downloads.get(req.params.videoId);
   if (!info) return res.json({ status: 'not_found' });
-
-  const currentSize = fs.existsSync(info.filePath)
-    ? fs.statSync(info.filePath).size
-    : 0;
-
+  const currentSize = fs.existsSync(info.filePath) ? fs.statSync(info.filePath).size : 0;
   res.json({
     status: info.error ? 'error' : info.process ? 'downloading' : 'complete',
     downloadedBytes: currentSize,
@@ -215,15 +212,32 @@ app.get('/api/progress/:videoId', (req, res) => {
   });
 });
 
-// Clean up on process exit
-process.on('exit', () => {
-  for (const [videoId] of downloads) cleanupVideo(videoId);
-});
-process.on('SIGINT', () => {
-  for (const [videoId] of downloads) cleanupVideo(videoId);
-  process.exit();
+app.get('/api/stream/:videoId', (req, res) => {
+  const info = downloads.get(req.params.videoId);
+  if (!info || !fs.existsSync(info.filePath)) return res.status(404).json({ error: 'Video not found' });
+
+  const stat = fs.statSync(info.filePath);
+  const fileSize = stat.size;
+  const range = req.headers.range;
+
+  if (range) {
+    const parts = range.replace(/bytes=/, '').split('-');
+    const start = parseInt(parts[0], 10);
+    const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+    res.writeHead(206, {
+      'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+      'Accept-Ranges': 'bytes',
+      'Content-Length': end - start + 1,
+      'Content-Type': 'video/mp4',
+    });
+    fs.createReadStream(info.filePath, { start, end }).pipe(res);
+  } else {
+    res.writeHead(200, { 'Content-Length': fileSize, 'Content-Type': 'video/mp4', 'Accept-Ranges': 'bytes' });
+    fs.createReadStream(info.filePath).pipe(res);
+  }
 });
 
-app.listen(PORT, () => {
-  console.log(`Shabang running at http://localhost:${PORT}`);
-});
+process.on('exit', () => { for (const [id] of downloads) cleanupVideo(id); });
+process.on('SIGINT', () => { for (const [id] of downloads) cleanupVideo(id); process.exit(); });
+
+httpServer.listen(PORT, () => console.log(`Shabang running at http://localhost:${PORT}`));
