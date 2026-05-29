@@ -11,8 +11,21 @@ const io = new Server(httpServer);
 
 const PORT = process.env.PORT || 3001;
 const TMP_DIR = path.join(__dirname, 'tmp');
+const COOKIES_FILE = path.join(TMP_DIR, 'yt-cookies.txt');
 
 if (!fs.existsSync(TMP_DIR)) fs.mkdirSync(TMP_DIR);
+
+// Write cookies from env var to file so yt-dlp can use them
+if (process.env.YT_COOKIES) {
+  fs.writeFileSync(COOKIES_FILE, process.env.YT_COOKIES, 'utf8');
+  console.log('YouTube cookies loaded from environment');
+}
+
+function ytdlpArgs(extra = []) {
+  const args = [...extra];
+  if (fs.existsSync(COOKIES_FILE)) args.unshift('--cookies', COOKIES_FILE);
+  return args;
+}
 
 app.use(express.json());
 app.use(express.static('public'));
@@ -53,14 +66,13 @@ function startDownload(videoId) {
     const info = { filePath, process: null, ready: false, size: 0, error: null };
     downloads.set(videoId, info);
 
-    const ytdlp = spawn('yt-dlp', [
+    const ytdlp = spawn('yt-dlp', ytdlpArgs([
       '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
       '--merge-output-format', 'mp4',
-      '--extractor-args', 'youtube:player_client=tv_embedded',
       '-o', filePath,
       '--no-playlist',
       `https://www.youtube.com/watch?v=${videoId}`,
-    ]);
+    ]));
 
     info.process = ytdlp;
 
@@ -133,11 +145,10 @@ io.on('connection', (socket) => {
     try {
       // Get metadata
       const meta = await new Promise((resolve, reject) => {
-        const ytdlp = spawn('yt-dlp', [
+        const ytdlp = spawn('yt-dlp', ytdlpArgs([
           '--dump-json', '--no-playlist',
-          '--extractor-args', 'youtube:player_client=tv_embedded',
           `https://www.youtube.com/watch?v=${videoId}`,
-        ]);
+        ]));
         let out = '';
         ytdlp.stdout.on('data', d => out += d);
         ytdlp.on('close', code => {
